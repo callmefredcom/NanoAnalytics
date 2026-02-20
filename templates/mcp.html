@@ -91,6 +91,7 @@
   <!-- ── Claude Desktop ──────────────────────────────────────── -->
   <h2>Claude Desktop</h2>
   <p>Edit your Claude Desktop configuration file and add the server block below.</p>
+  <p>⚠️ <strong>Prerequisite:</strong> <a href="https://nodejs.org" target="_blank" style="color:var(--accent)">Node.js</a> must be installed on your computer. The config uses <code>npx</code> to auto-download the MCP bridge — no other install needed.</p>
 
   <h3>Config file location</h3>
   <div class="code-block" style="font-size:.78rem">
@@ -102,19 +103,17 @@ Windows: %APPDATA%\Claude\claude_desktop_config.json</div>
   "mcpServers": {
     "nano-analytics": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-openapi",
-        "--openapi-url", "{{ base_url }}/openapi.json"
-      ],
+      "args": ["-y", "@ivotoby/openapi-mcp-server"],
       "env": {
-        "MCP_SERVER_AUTHORIZATION_HEADER": "Bearer &lt;YOUR_API_TOKEN&gt;"
+        "API_BASE_URL": "{{ base_url }}",
+        "OPENAPI_SPEC_PATH": "{{ base_url }}/openapi.json",
+        "API_HEADERS": "Authorization:Bearer &lt;YOUR_API_TOKEN&gt;"
       }
     }
   }
 }</div>
 
-  <p>Restart Claude Desktop after saving. You can then ask:</p>
+  <p>Save the file and restart Claude Desktop. You can then ask:</p>
   <div class="code-block" style="color:#a6e3a1">"What were my top pages last week on mysite.com?"
 "Is mobile traffic growing this month?"
 "Show me the daily traffic trend for example.com"</div>

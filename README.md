@@ -102,6 +102,8 @@ Your NanoAnalytics instance exposes a live OpenAPI spec at `/openapi.json`. Any 
 
 ### Claude Desktop
 
+**Prerequisites:** [Node.js](https://nodejs.org) must be installed on your computer (the config uses `npx` to run the MCP bridge automatically — no manual install needed beyond Node.js itself).
+
 **Config file location:**
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -113,20 +115,18 @@ Open the file and add the `nano-analytics` block inside `mcpServers`:
   "mcpServers": {
     "nano-analytics": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-openapi",
-        "--openapi-url", "https://YOUR-DEPLOY-URL/openapi.json"
-      ],
+      "args": ["-y", "@ivotoby/openapi-mcp-server"],
       "env": {
-        "MCP_SERVER_AUTHORIZATION_HEADER": "Bearer YOUR_API_TOKEN"
+        "API_BASE_URL": "https://YOUR-DEPLOY-URL",
+        "OPENAPI_SPEC_PATH": "https://YOUR-DEPLOY-URL/openapi.json",
+        "API_HEADERS": "Authorization:Bearer YOUR_API_TOKEN"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop. You can now ask:
+Save the file and restart Claude Desktop. You can now ask:
 
 > *"What were my top pages last week on mysite.com?"*
 > *"Is mobile traffic growing this month?"*

@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NanoAnalytics</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -207,6 +209,58 @@
       white-space: nowrap;
     }
 
+    /* ── Live map ───────────────────────────────────────────── */
+    .live-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.5rem;
+    }
+    .live-header {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      margin-bottom: .75rem;
+    }
+    .live-header h2 {
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+    .live-dot {
+      width: 8px; height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      display: inline-block;
+      animation: livepulse 2s infinite;
+    }
+    @keyframes livepulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
+      50%      { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+    }
+    .active-badge {
+      font-size: .95rem;
+      font-weight: 800;
+      color: #22c55e;
+    }
+    .live-hint {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    #live-map {
+      height: 340px;
+      border-radius: 6px;
+      overflow: hidden;
+      z-index: 0;
+    }
+
     /* ── Loading / empty states ─────────────────────────────── */
     .skeleton { color: var(--muted); font-style: italic; font-size: .85rem; }
     .empty { color: var(--muted); font-size: .85rem; }
@@ -260,6 +314,16 @@
     </div>
   </div>
 
+  <div class="live-box">
+    <div class="live-header">
+      <h2><span class="live-dot"></span> Live</h2>
+      <span class="active-badge" id="active-count">—</span>
+      <span style="font-size:.8rem;color:var(--muted)">active now</span>
+      <span class="live-hint">last 5 min · refreshes every 30s</span>
+    </div>
+    <div id="live-map"></div>
+  </div>
+
   <div class="charts-row">
     <div class="chart-box">
       <h2>Traffic over time</h2>
@@ -300,8 +364,94 @@
   const LS_TOKEN = 'na_token';
   const LS_SITE  = 'na_site';
 
+  // ── Country centroids [lat, lng] ───────────────────────────
+  const CENTROIDS = {
+    AF:[33.9,67.7],AL:[41.2,20.2],DZ:[28.0,1.7],AO:[-11.2,17.9],AR:[-38.4,-63.6],
+    AM:[40.1,45.0],AU:[-25.3,133.8],AT:[47.5,14.6],AZ:[40.1,47.6],BH:[26.0,50.6],
+    BD:[23.7,90.4],BY:[53.7,28.0],BE:[50.5,4.5],BJ:[9.3,2.3],BO:[-16.3,-63.6],
+    BA:[44.0,17.7],BR:[-14.2,-51.9],BG:[42.7,25.5],BF:[12.4,-1.6],BI:[-3.4,29.9],
+    KH:[12.6,105.0],CM:[3.9,11.5],CA:[56.1,-106.3],CF:[6.6,20.9],TD:[15.5,18.7],
+    CL:[-35.7,-71.5],CN:[35.9,104.2],CO:[4.6,-74.3],CG:[-0.2,15.8],CR:[9.7,-83.8],
+    HR:[45.1,15.2],CU:[21.5,-77.8],CY:[35.1,33.4],CZ:[49.8,15.5],DK:[56.3,9.5],
+    DO:[18.7,-70.2],EC:[-1.8,-78.2],EG:[26.8,30.8],SV:[13.8,-88.9],EE:[58.6,25.0],
+    ET:[9.1,40.5],FI:[61.9,25.7],FR:[46.2,2.2],GA:[-0.8,11.6],GE:[42.3,43.4],
+    DE:[51.2,10.5],GH:[7.9,-1.0],GR:[39.1,22.0],GT:[15.8,-90.2],GN:[11.0,-10.9],
+    HT:[18.9,-72.3],HN:[15.2,-86.2],HU:[47.2,19.5],IS:[64.9,-18.6],IN:[20.6,78.9],
+    ID:[-0.8,113.9],IR:[32.4,53.7],IQ:[33.2,43.7],IE:[53.4,-8.2],IL:[31.0,34.9],
+    IT:[41.9,12.6],JM:[18.1,-77.3],JP:[36.2,138.3],JO:[30.6,36.2],KZ:[48.0,66.9],
+    KE:[-0.0,37.9],KW:[29.3,47.5],KG:[41.2,74.8],LV:[56.9,24.6],LB:[33.9,35.9],
+    LY:[26.3,17.2],LT:[55.2,24.0],LU:[49.8,6.1],MG:[-18.8,46.9],MW:[-13.3,34.3],
+    MY:[4.2,108.0],ML:[17.6,-4.0],MT:[35.9,14.4],MX:[23.6,-102.6],MD:[47.4,28.4],
+    MN:[46.9,103.8],ME:[42.7,19.4],MA:[31.8,-7.1],MZ:[-18.7,35.5],MM:[21.9,96.0],
+    NA:[-22.0,17.1],NP:[28.4,84.1],NL:[52.1,5.3],NZ:[-40.9,174.9],NI:[12.9,-85.2],
+    NE:[17.6,8.1],NG:[9.1,8.7],MK:[41.6,21.7],NO:[60.5,8.5],OM:[21.5,55.9],
+    PK:[30.4,69.3],PA:[8.5,-80.8],PY:[-23.4,-58.4],PE:[-9.2,-75.0],PH:[12.9,121.8],
+    PL:[51.9,19.1],PT:[39.4,-8.2],QA:[25.4,51.2],RO:[45.9,24.9],RU:[61.5,105.3],
+    RW:[-1.9,29.9],SA:[24.0,45.0],SN:[14.5,-14.5],RS:[44.0,21.0],SL:[8.5,-11.8],
+    SK:[48.7,19.7],SI:[46.1,14.8],SO:[5.2,46.2],ZA:[-30.6,22.9],KR:[35.9,127.8],
+    ES:[40.5,-3.7],LK:[7.9,80.8],SD:[12.9,30.2],SE:[60.1,18.6],CH:[46.8,8.2],
+    SY:[35.0,38.0],TW:[23.7,121.0],TJ:[38.9,71.3],TZ:[-6.4,35.0],TH:[15.9,100.9],
+    TL:[-8.9,125.7],TG:[8.6,0.8],TN:[34.0,9.0],TR:[38.9,35.2],TM:[38.97,59.6],
+    UG:[1.4,32.3],UA:[48.4,31.2],AE:[23.4,53.8],GB:[55.4,-3.4],US:[37.1,-95.7],
+    UY:[-32.5,-55.8],UZ:[41.4,64.6],VE:[6.4,-66.6],VN:[14.1,108.3],YE:[15.6,48.5],
+    ZM:[-13.1,27.8],ZW:[-20.0,30.0],PS:[31.9,35.2],HK:[22.3,114.2],SG:[1.3,103.8],
+    PG:[-6.3,143.9],FJ:[-17.7,178.1],MV:[4.2,73.5],BT:[27.5,90.4],KP:[40.3,127.5],
+    TT:[10.7,-61.2],BB:[13.2,-59.6],JE:[49.2,-2.1],CW:[12.2,-69.0],
+  };
+
   let tsChart  = null;
   let devChart = null;
+  let liveMap  = null;
+  let liveMarkers = [];
+
+  // ── Live map ───────────────────────────────────────────────
+  function initLiveMap() {
+    liveMap = L.map('live-map', { zoomControl: true, attributionControl: false })
+               .setView([20, 10], 2);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd',
+    }).addTo(liveMap);
+    L.control.attribution({ prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://osm.org/copyright">OSM</a>' }).addTo(liveMap);
+  }
+
+  async function loadLive() {
+    const token = localStorage.getItem(LS_TOKEN);
+    const site  = localStorage.getItem(LS_SITE);
+    if (!token || !site || !liveMap) return;
+    try {
+      const r = await fetch(`/api/active?site=${encodeURIComponent(site)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+
+      document.getElementById('active-count').textContent = data.active;
+
+      // Remove old markers
+      liveMarkers.forEach(m => liveMap.removeLayer(m));
+      liveMarkers = [];
+
+      // Place new markers
+      (data.countries || []).forEach(({ country, sessions }) => {
+        const pos = CENTROIDS[country];
+        if (!pos) return;
+        const radius = Math.max(7, Math.min(38, sessions * 9));
+        const m = L.circleMarker(pos, {
+          radius,
+          fillColor: '#6366f1',
+          color: '#fff',
+          weight: 1.5,
+          fillOpacity: 0.65,
+        }).bindTooltip(
+          `${flag(country)} ${country} — ${sessions} active`,
+          { permanent: false, direction: 'top' }
+        ).addTo(liveMap);
+        liveMarkers.push(m);
+      });
+    } catch(e) { /* silent */ }
+  }
+
+  let _liveInterval = null;
 
   // ── Bootstrap ──────────────────────────────────────────────
   function init() {
@@ -315,7 +465,14 @@
     document.getElementById('login').style.display = 'none';
     document.getElementById('app').style.display   = 'block';
     document.getElementById('cur-site').textContent = site;
+
+    // Init map once (needs the div to be visible)
+    if (!liveMap) initLiveMap();
+
     load();
+    loadLive();
+    if (_liveInterval) clearInterval(_liveInterval);
+    _liveInterval = setInterval(loadLive, 30000);
   }
 
   // ── Login ──────────────────────────────────────────────────

@@ -252,6 +252,36 @@ def countries():
     return jsonify([dict(r) for r in rows])
 
 
+@bp.route("/api/active")
+@require_token
+def active():
+    """Active unique sessions in the last N seconds (default 300 = 5 min), grouped by country."""
+    site   = request.args.get("site", "")
+    window = min(int(request.args.get("window", 300)), 3600)
+    since  = int(time.time()) - window
+    root   = _root_domain(site)
+
+    total = get_db().execute(
+        "SELECT COUNT(DISTINCT session) AS n FROM hits "
+        "WHERE (site = ? OR site LIKE ?) AND ts >= ?",
+        [root, f"%.{root}", since],
+    ).fetchone()["n"]
+
+    rows = get_db().execute(
+        "SELECT country, COUNT(DISTINCT session) AS sessions FROM hits "
+        "WHERE (site = ? OR site LIKE ?) AND ts >= ? "
+        "AND country IS NOT NULL AND country != '' "
+        "GROUP BY country ORDER BY sessions DESC",
+        [root, f"%.{root}", since],
+    ).fetchall()
+
+    return jsonify({
+        "active":          total,
+        "window_seconds":  window,
+        "countries":       [dict(r) for r in rows],
+    })
+
+
 @bp.route("/api/hostnames")
 @require_token
 def hostnames():

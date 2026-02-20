@@ -188,6 +188,33 @@ SPEC = {
                 },
             },
         ),
+        "/api/active": {
+            "get": {
+                "summary": "Active unique sessions in the last N seconds (default 300 = 5 min), with per-country breakdown. Use for real-time visitor map.",
+                "security": [{"BearerAuth": []}],
+                "parameters": [
+                    {"name": "site",   "in": "query", "required": True,  "schema": {"type": "string"}},
+                    {"name": "window", "in": "query", "required": False, "schema": {"type": "integer", "default": 300, "maximum": 3600}, "description": "Lookback window in seconds"},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {"application/json": {"schema": {
+                            "type": "object",
+                            "properties": {
+                                "active":         {"type": "integer", "description": "Total unique active sessions"},
+                                "window_seconds": {"type": "integer"},
+                                "countries":      {"type": "array", "items": {"type": "object", "properties": {
+                                    "country":  {"type": "string"},
+                                    "sessions": {"type": "integer"},
+                                }}},
+                            },
+                        }}},
+                    },
+                    "401": {"description": "Unauthorized"},
+                },
+            }
+        },
         "/api/hostnames": _stats_path(
             "Pageview breakdown by exact hostname (subdomain breakdown). Accepts root domain or any subdomain — all subdomains are matched automatically.",
             has_limit=True,

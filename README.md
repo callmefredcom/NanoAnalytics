@@ -21,7 +21,7 @@ Each user gets a completely independent instance. Your data never touches anyone
 > ✅ **Render is the easiest path:** `API_TOKEN` is auto-generated for you. After deploy, find it in your Render dashboard → **Settings → Environment Variables**.
 >
 > ⚙️ **Railway:** After deploy:
-> 1. Go to your service → **Volumes** → add a volume mounted at `/data`
+> 1. **Right-click** your NanoAnalytics service on the Railway canvas → **Attach volume** → set mount path to `/data`
 > 2. Go to **Variables** → add `API_TOKEN` with any random string
 > 3. ⚠️ **Critical — check `DB_PATH`:** In **Variables**, make sure `DB_PATH` is set to `/data/analytics.db`. Railway sometimes auto-populates it as `/tmp/analytics.db` — `/tmp` is ephemeral and gets wiped on every redeploy, losing all your data. If you see `/tmp/...`, change it to `/data/analytics.db` and redeploy.
 >

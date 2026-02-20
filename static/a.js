@@ -1,0 +1,1 @@
+(()=>{const s=sessionStorage.ab||(sessionStorage.ab=Math.random().toString(36).slice(2,10));fetch(`${new URL(document.currentScript.src).origin}/hit?site=${location.hostname}&path=${encodeURIComponent(location.pathname)}&ref=${encodeURIComponent(document.referrer)}&lang=${navigator.language}&w=${screen.width}&s=${s}`,{method:'GET',keepalive:true})})();

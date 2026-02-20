@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API Docs — NanoAnalytics</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+    .topbar { display: none !important; }
+    #token-bar {
+      background: #1a1a2e;
+      color: #fff;
+      padding: .75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      font-family: system-ui, sans-serif;
+      font-size: .85rem;
+    }
+    #token-bar label { color: #a5b4fc; font-weight: 600; }
+    #token-bar input {
+      flex: 1;
+      max-width: 380px;
+      padding: .35rem .6rem;
+      border: 1px solid #4b5563;
+      background: #111827;
+      color: #fff;
+      border-radius: 5px;
+      font-size: .85rem;
+      font-family: monospace;
+    }
+    #token-bar button {
+      padding: .35rem .85rem;
+      background: #6366f1;
+      border: none;
+      color: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: .82rem;
+      font-weight: 600;
+    }
+    #token-bar button:hover { opacity: .85; }
+    #token-bar .hint { color: #9ca3af; font-size: .78rem; }
+    #token-bar a { color: #a5b4fc; text-decoration: none; font-size: .8rem; }
+    #token-bar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div id="token-bar">
+  <label for="sw-token">API Token</label>
+  <input id="sw-token" type="password" placeholder="Paste your API_TOKEN here" autocomplete="off">
+  <button id="set-token-btn">Authenticate</button>
+  <span class="hint">Token is saved in this browser only.</span>
+  <a href="/dashboard" style="margin-left:auto">← Dashboard</a>
+</div>
+
+<div id="swagger-ui"></div>
+
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+const LS_KEY = 'na_token';
+
+// Pre-fill from localStorage
+const stored = localStorage.getItem(LS_KEY);
+if (stored) document.getElementById('sw-token').value = stored;
+
+let swaggerToken = stored || '';
+
+const ui = SwaggerUIBundle({
+  url: '/openapi.json',
+  dom_id: '#swagger-ui',
+  presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+  layout: 'BaseLayout',
+  deepLinking: true,
+  requestInterceptor: (req) => {
+    if (swaggerToken) {
+      req.headers['Authorization'] = `Bearer ${swaggerToken}`;
+    }
+    return req;
+  },
+});
+
+document.getElementById('set-token-btn').addEventListener('click', () => {
+  swaggerToken = document.getElementById('sw-token').value.trim();
+  if (swaggerToken) localStorage.setItem(LS_KEY, swaggerToken);
+  alert('Token set. All API calls will now include your Bearer token.');
+});
+</script>
+</body>
+</html>

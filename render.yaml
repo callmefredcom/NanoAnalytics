@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: nano-analytics
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: API_TOKEN
+        generateValue: true
+      - key: DB_PATH
+        value: /data/analytics.db
+      - key: BASE_URL
+        value: ""
+      - key: PORT
+        value: "8000"

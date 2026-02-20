@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NanoAnalytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --accent: #6366f1;
+      --accent-light: #eef2ff;
+      --danger: #ef4444;
+      --radius: 10px;
+      --shadow: 0 1px 6px rgba(0,0,0,.07);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Login ──────────────────────────────────────────────── */
+    #login {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 380px;
+      margin: 18vh auto 0;
+      padding: 2rem;
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,.09);
+    }
+    #login h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #login .logo { font-size: 1.6rem; }
+    #login label { font-size: .8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    #login input {
+      width: 100%;
+      padding: .55rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .95rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    #login input:focus { border-color: var(--accent); }
+    #login button {
+      padding: .6rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    #login button:hover { opacity: .88; }
+    #login .error { color: var(--danger); font-size: .85rem; }
+    #login .hint { font-size: .8rem; color: var(--muted); }
+
+    /* ── App shell ─────────────────────────────────────────── */
+    #app { display: none; max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .75rem;
+      margin-bottom: 1.5rem;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .controls select, .controls input[type="date"] {
+      padding: .4rem .6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .85rem;
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .controls .site-label {
+      font-size: .8rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .controls #cur-site {
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .btn-logout {
+      padding: .38rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      font-size: .82rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .btn-logout:hover { color: var(--danger); border-color: var(--danger); }
+
+    /* ── Stat cards ─────────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      box-shadow: var(--shadow);
+    }
+    .card .label {
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .card .value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-top: .2rem;
+      color: var(--text);
+    }
+
+    /* ── Charts row ─────────────────────────────────────────── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 720px) { .charts-row { grid-template-columns: 1fr; } }
+    .chart-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+    .chart-box h2 {
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: .75rem;
+    }
+
+    /* ── Tables row ─────────────────────────────────────────── */
+    .tables-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .table-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+    .table-box h2 {
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: .75rem;
+    }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table td {
+      padding: .4rem .2rem;
+      border-bottom: 1px solid var(--border);
+      font-size: .88rem;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .count {
+      text-align: right;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+      padding-left: .75rem;
+    }
+    .data-table .path {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── Loading / empty states ─────────────────────────────── */
+    .skeleton { color: var(--muted); font-style: italic; font-size: .85rem; }
+    .empty { color: var(--muted); font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── Login form ─────────────────────────────────────────── -->
+<div id="login">
+  <h1><span class="logo">📊</span> NanoAnalytics</h1>
+  <div>
+    <label for="site-inp">Site (hostname)</label>
+    <input id="site-inp" type="text" placeholder="example.com" autocomplete="off" spellcheck="false">
+  </div>
+  <div>
+    <label for="token-inp">API Token</label>
+    <input id="token-inp" type="password" placeholder="Paste your API_TOKEN here">
+  </div>
+  <button id="login-btn">Open Dashboard</button>
+  <p id="login-err" class="error" style="display:none"></p>
+  <p class="hint">Find your API token in your hosting platform's Environment Variables panel.</p>
+</div>
+
+<!-- ── App ────────────────────────────────────────────────── -->
+<div id="app">
+  <header>
+    <h1><span>📊</span> NanoAnalytics
+      <span class="site-label">— </span><span id="cur-site"></span>
+    </h1>
+    <div class="controls">
+      <select id="range-sel">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="custom">Custom range</option>
+      </select>
+      <input type="date" id="start-date" style="display:none">
+      <input type="date" id="end-date"   style="display:none">
+      <button class="btn-logout" id="logout-btn">Logout</button>
+    </div>
+  </header>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">Page Views</div>
+      <div class="value" id="stat-views">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Sessions</div>
+      <div class="value" id="stat-sessions">—</div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-box">
+      <h2>Traffic over time</h2>
+      <canvas id="chart-ts" height="80"></canvas>
+    </div>
+    <div class="chart-box">
+      <h2>Devices</h2>
+      <canvas id="chart-devices" height="80"></canvas>
+    </div>
+  </div>
+
+  <div class="tables-row">
+    <div class="table-box">
+      <h2>Top Pages</h2>
+      <table class="data-table" id="tbl-pages"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Top Referrers</h2>
+      <table class="data-table" id="tbl-refs"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Top Languages</h2>
+      <table class="data-table" id="tbl-langs"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const LS_TOKEN = 'na_token';
+  const LS_SITE  = 'na_site';
+
+  let tsChart  = null;
+  let devChart = null;
+
+  // ── Bootstrap ──────────────────────────────────────────────
+  function init() {
+    const token = localStorage.getItem(LS_TOKEN);
+    const site  = localStorage.getItem(LS_SITE);
+    if (!token || !site) {
+      document.getElementById('login').style.display = 'flex';
+      document.getElementById('app').style.display   = 'none';
+      return;
+    }
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display   = 'block';
+    document.getElementById('cur-site').textContent = site;
+    load();
+  }
+
+  // ── Login ──────────────────────────────────────────────────
+  document.getElementById('login-btn').addEventListener('click', async () => {
+    const token = document.getElementById('token-inp').value.trim();
+    const site  = document.getElementById('site-inp').value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const err   = document.getElementById('login-err');
+    err.style.display = 'none';
+    if (!token || !site) { showErr('Please enter both a site and an API token.'); return; }
+
+    // Validate by hitting a protected endpoint
+    const r = await fetch(`/api/pageviews?site=${encodeURIComponent(site)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (r.status === 401) { showErr('Wrong token — try again.'); return; }
+
+    localStorage.setItem(LS_TOKEN, token);
+    localStorage.setItem(LS_SITE,  site);
+    init();
+  });
+
+  function showErr(msg) {
+    const el = document.getElementById('login-err');
+    el.textContent  = msg;
+    el.style.display = 'block';
+  }
+
+  // Enter key on inputs
+  ['site-inp', 'token-inp'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('login-btn').click();
+    });
+  });
+
+  // ── Logout ─────────────────────────────────────────────────
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_SITE);
+    location.reload();
+  });
+
+  // ── Date range ─────────────────────────────────────────────
+  document.getElementById('range-sel').addEventListener('change', function() {
+    const custom = this.value === 'custom';
+    document.getElementById('start-date').style.display = custom ? '' : 'none';
+    document.getElementById('end-date').style.display   = custom ? '' : 'none';
+    if (!custom) load();
+  });
+  ['start-date', 'end-date'].forEach(id => {
+    document.getElementById(id).addEventListener('change', load);
+  });
+
+  function getRange() {
+    const sel = document.getElementById('range-sel').value;
+    const now = Math.floor(Date.now() / 1000);
+    if (sel === 'custom') {
+      const s = document.getElementById('start-date').value;
+      const e = document.getElementById('end-date').value;
+      return {
+        start: s ? Math.floor(new Date(s).getTime() / 1000) : now - 86400 * 30,
+        end:   e ? Math.floor(new Date(e).getTime() / 1000) : now,
+      };
+    }
+    return { start: now - 86400 * parseInt(sel), end: now };
+  }
+
+  // ── API helper ─────────────────────────────────────────────
+  async function api(path) {
+    const token = localStorage.getItem(LS_TOKEN);
+    const site  = localStorage.getItem(LS_SITE);
+    const { start, end } = getRange();
+    const qs = new URLSearchParams({ site, start, end, limit: 10 });
+    const r = await fetch(`${path}?${qs}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (r.status === 401) { localStorage.removeItem(LS_TOKEN); location.reload(); }
+    return r.json();
+  }
+
+  // ── Load all data ──────────────────────────────────────────
+  async function load() {
+    try {
+      const [pv, pgs, refs, ts, devs, langs] = await Promise.all([
+        api('/api/pageviews'),
+        api('/api/pages'),
+        api('/api/referrers'),
+        api('/api/timeseries'),
+        api('/api/devices'),
+        api('/api/languages'),
+      ]);
+
+      // Stat cards
+      document.getElementById('stat-views').textContent    = fmt(pv.views);
+      document.getElementById('stat-sessions').textContent = fmt(pv.sessions);
+
+      // Timeseries line chart
+      const tsLabels = ts.map(r => r.day);
+      const tsData   = ts.map(r => r.views);
+      if (tsChart) tsChart.destroy();
+      tsChart = new Chart(document.getElementById('chart-ts'), {
+        type: 'line',
+        data: {
+          labels: tsLabels,
+          datasets: [{
+            label: 'Views',
+            data: tsData,
+            fill: true,
+            tension: 0.3,
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,.1)',
+            pointRadius: tsLabels.length > 60 ? 0 : 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+            y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
+          },
+        }
+      });
+
+      // Devices doughnut
+      if (devChart) devChart.destroy();
+      devChart = new Chart(document.getElementById('chart-devices'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Desktop', 'Mobile', 'Tablet', 'Unknown'],
+          datasets: [{
+            data: [devs.desktop, devs.mobile, devs.tablet, devs.unknown],
+            backgroundColor: ['#6366f1', '#f59e0b', '#10b981', '#d1d5db'],
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+          cutout: '65%',
+        }
+      });
+
+      // Top Pages table
+      renderTable('tbl-pages', pgs, r => [r.path, fmt(r.views)], 'No pages tracked yet.');
+
+      // Top Referrers table
+      renderTable('tbl-refs', refs, r => [r.ref || '(direct)', fmt(r.views)], 'No referrers yet.');
+
+      // Top Languages table
+      renderTable('tbl-langs', langs, r => [r.lang, fmt(r.views)], 'No language data yet.');
+
+    } catch (e) {
+      console.error('NanoAnalytics load error:', e);
+    }
+  }
+
+  function renderTable(id, rows, mapper, emptyMsg) {
+    const tbl = document.getElementById(id);
+    if (!rows || rows.length === 0) {
+      tbl.innerHTML = `<tr><td class="empty">${emptyMsg}</td></tr>`;
+      return;
+    }
+    tbl.innerHTML = rows.map(r => {
+      const [label, count] = mapper(r);
+      return `<tr>
+        <td class="path" title="${escHtml(label)}">${escHtml(label)}</td>
+        <td class="count">${count}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function fmt(n) {
+    if (n == null) return '—';
+    return Number(n).toLocaleString();
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nano-analytics"
+version = "0.1.0"
+description = "Lightweight, self-hostable web analytics with an AI-ready API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "flask>=3.1",
+    "gunicorn>=22",
+]
+
+[project.optional-dependencies]
+bots = [
+    "python-telegram-bot>=21",
+    "discord.py>=2.4",
+    "httpx>=0.27",
+]
+dev = [
+    "pytest>=8",
+    "pytest-flask>=1.3",
+]
+
+[project.scripts]
+nano-analytics = "nano_analytics:create_app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nano_analytics"]

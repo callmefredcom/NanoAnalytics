@@ -3,8 +3,8 @@ FROM python:3.12-alpine
 WORKDIR /app
 
 # Install dependencies first (cached layer)
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[bots]" 2>/dev/null || pip install --no-cache-dir -e .
+COPY pyproject.toml README.md ./
+RUN pip install --no-cache-dir flask gunicorn
 
 # Copy application code
 COPY nano_analytics/ nano_analytics/

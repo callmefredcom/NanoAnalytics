@@ -122,7 +122,7 @@ SPEC = {
             },
         ),
         "/api/referrers": _stats_path(
-            "Top referrer domains",
+            "Top external referrer domains (internal self-referrals from the tracked domain are automatically excluded)",
             has_limit=True,
             response_schema={
                 "type": "array",

@@ -181,13 +181,15 @@ def pages():
 @bp.route("/api/referrers")
 @require_token
 def referrers():
-    """Top referrer domains."""
+    """Top external referrer domains (own-domain self-referrals excluded)."""
     site, start, end, limit = _query_params()
     where, params = _where(site, start, end)
+    root = _root_domain(site)
     rows = get_db().execute(
-        f"SELECT ref, COUNT(*) AS views FROM hits WHERE {where} AND ref != '' "
+        f"SELECT ref, COUNT(*) AS views FROM hits WHERE {where} "
+        f"AND ref != '' AND ref NOT LIKE ? "
         f"GROUP BY ref ORDER BY views DESC LIMIT ?",
-        params + [limit],
+        params + [f"%{root}%", limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])
 

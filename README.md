@@ -20,7 +20,10 @@ Each user gets a completely independent instance. Your data never touches anyone
 
 > ✅ **Render is the easiest path:** `API_TOKEN` is auto-generated for you. After deploy, find it in your Render dashboard → **Settings → Environment Variables**.
 >
-> ⚙️ **Railway:** After deploy, go to your service → **Volumes** → add a volume at `/data`. Then go to **Variables** → add `API_TOKEN` with any random string.
+> ⚙️ **Railway:** After deploy:
+> 1. Go to your service → **Volumes** → add a volume mounted at `/data`
+> 2. Go to **Variables** → add `API_TOKEN` with any random string
+> 3. ⚠️ **Critical — check `DB_PATH`:** In **Variables**, make sure `DB_PATH` is set to `/data/analytics.db`. Railway sometimes auto-populates it as `/tmp/analytics.db` — `/tmp` is ephemeral and gets wiped on every redeploy, losing all your data. If you see `/tmp/...`, change it to `/data/analytics.db` and redeploy.
 >
 > 💡 **How the deploy buttons work:** They pull the source code from this public repository and deploy it as *your own private instance* on your chosen platform. You own the deployment, the URL, and the data — there is no shared server.
 

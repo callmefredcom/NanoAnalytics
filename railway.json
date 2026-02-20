@@ -4,7 +4,6 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 30 --access-logfile -",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5

@@ -20,4 +20,4 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn wsgi:app --bind 0.0.0.0:${PORT} --workers 2 --timeout 30 --access-logfile -"]
+CMD ["sh", "-c", "gunicorn wsgi:app --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 30 --access-logfile -"]

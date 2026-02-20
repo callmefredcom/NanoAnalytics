@@ -27,10 +27,22 @@ def _query_params():
     return site, start, end, min(limit, 500)
 
 
+def _root_domain(site):
+    """Strip www. prefix so queries match all subdomains of the root."""
+    if site.startswith("www."):
+        return site[4:]
+    return site
+
+
 def _where(site, start, end):
-    """Build a WHERE clause for the common site/start/end filters."""
-    clauses = ["site = ?"]
-    params  = [site]
+    """Build a WHERE clause matching the root domain and all its subdomains.
+
+    e.g. site='flaskvibe.com' matches flaskvibe.com, www.flaskvibe.com,
+    app.flaskvibe.com, etc.  site='www.flaskvibe.com' is normalised first.
+    """
+    root = _root_domain(site)
+    clauses = ["(site = ? OR site LIKE ?)"]
+    params  = [root, f"%.{root}"]
     if start:
         clauses.append("ts >= ?")
         params.append(start)
@@ -188,6 +200,20 @@ def languages():
     rows = get_db().execute(
         f"SELECT lang, COUNT(*) AS views FROM hits WHERE {where} AND lang != '' "
         f"GROUP BY lang ORDER BY views DESC LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/hostnames")
+@require_token
+def hostnames():
+    """Pageview breakdown by exact hostname (subdomain breakdown)."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT site, COUNT(*) AS views FROM hits WHERE {where} "
+        f"GROUP BY site ORDER BY views DESC LIMIT ?",
         params + [limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])

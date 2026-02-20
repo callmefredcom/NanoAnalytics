@@ -284,6 +284,10 @@
       <h2>Top Languages</h2>
       <table class="data-table" id="tbl-langs"><tr><td class="skeleton">Loading…</td></tr></table>
     </div>
+    <div class="table-box">
+      <h2>Hostnames</h2>
+      <table class="data-table" id="tbl-hosts"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
   </div>
 </div>
 
@@ -390,13 +394,14 @@
   // ── Load all data ──────────────────────────────────────────
   async function load() {
     try {
-      const [pv, pgs, refs, ts, devs, langs] = await Promise.all([
+      const [pv, pgs, refs, ts, devs, langs, hosts] = await Promise.all([
         api('/api/pageviews'),
         api('/api/pages'),
         api('/api/referrers'),
         api('/api/timeseries'),
         api('/api/devices'),
         api('/api/languages'),
+        api('/api/hostnames'),
       ]);
 
       // Stat cards
@@ -457,6 +462,9 @@
 
       // Top Languages table
       renderTable('tbl-langs', langs, r => [r.lang, fmt(r.views)], 'No language data yet.');
+
+      // Hostnames breakdown
+      renderTable('tbl-hosts', hosts, r => [r.site, fmt(r.views)], 'No hostname data yet.');
 
     } catch (e) {
       console.error('NanoAnalytics load error:', e);

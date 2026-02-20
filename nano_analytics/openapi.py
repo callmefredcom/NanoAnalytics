@@ -7,7 +7,7 @@ _COMMON_PARAMS = [
         "in": "query",
         "required": True,
         "schema": {"type": "string"},
-        "description": "Hostname to filter, e.g. example.com",
+        "description": "Root domain or any subdomain, e.g. example.com — www and all subdomains are matched automatically",
     },
     {
         "name": "start",
@@ -169,6 +169,20 @@ SPEC = {
                     "type": "object",
                     "properties": {
                         "lang":  {"type": "string"},
+                        "views": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+        "/api/hostnames": _stats_path(
+            "Pageview breakdown by exact hostname (subdomain breakdown). Accepts root domain or any subdomain — all subdomains are matched automatically.",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "site":  {"type": "string"},
                         "views": {"type": "integer"},
                     },
                 },

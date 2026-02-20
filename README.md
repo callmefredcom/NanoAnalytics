@@ -94,12 +94,132 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## MCP / AI Agent Setup
 
-Your NanoAnalytics instance exposes a live OpenAPI spec at `/openapi.json`. Any AI agent that speaks OpenAPI can query your analytics directly.
+Your NanoAnalytics instance exposes a live OpenAPI spec at `/openapi.json`. Any AI agent that speaks OpenAPI can query your analytics in natural language.
 
-**Visit `/mcp` on your instance** for copy-paste config blocks for:
-- **Claude Desktop** — answers questions like *"What were my top pages last week?"*
-- **Cursor** — analytics context inside your IDE
-- Any other OpenAPI-compatible AI client
+> **Interactive guide:** visit **`https://YOUR-DEPLOY-URL/mcp`** for a page that auto-fills your instance URL and has one-click copy buttons for every config block below.
+
+---
+
+### Claude Desktop
+
+**Config file location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Open the file and add the `nano-analytics` block inside `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "nano-analytics": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-openapi",
+        "--openapi-url", "https://YOUR-DEPLOY-URL/openapi.json"
+      ],
+      "env": {
+        "MCP_SERVER_AUTHORIZATION_HEADER": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. You can now ask:
+
+> *"What were my top pages last week on mysite.com?"*
+> *"Is mobile traffic growing this month?"*
+> *"Show me the daily trend for the past 30 days."*
+
+---
+
+### Cursor
+
+**Option A — Project scope** (analytics context only in this repo):
+
+Create `.cursor/mcp.json` at the root of your project:
+
+```json
+{
+  "mcpServers": {
+    "nano-analytics": {
+      "url": "https://YOUR-DEPLOY-URL/openapi.json",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+**Option B — Global** (available in all Cursor workspaces):
+
+Go to **Cursor Settings → MCP → Add Server** and paste:
+
+```json
+{
+  "nano-analytics": {
+    "url": "https://YOUR-DEPLOY-URL/openapi.json",
+    "headers": {
+      "Authorization": "Bearer YOUR_API_TOKEN"
+    }
+  }
+}
+```
+
+---
+
+### Windsurf (Codeium)
+
+Go to **Windsurf Settings → Cascade → MCP Servers → Add**:
+
+```json
+{
+  "mcpServers": {
+    "nano-analytics": {
+      "serverUrl": "https://YOUR-DEPLOY-URL/openapi.json",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_TOKEN"
+      }
+    }
+  }
+}
+```
+
+---
+
+### GPT Actions (ChatGPT / custom GPTs)
+
+1. Go to **My GPTs → Create → Configure → Add Action**
+2. Set **Authentication** → API Key → Header: `Authorization`, Value: `Bearer YOUR_API_TOKEN`
+3. Import schema from URL: `https://YOUR-DEPLOY-URL/openapi.json`
+4. Save — your GPT can now answer analytics questions
+
+---
+
+### Any other OpenAPI-compatible client
+
+```
+Spec URL:  https://YOUR-DEPLOY-URL/openapi.json
+Auth type: Bearer Token
+Token:     YOUR_API_TOKEN
+```
+
+Works with LangChain tools, LlamaIndex, n8n AI nodes, Make.com HTTP modules, or any tool that accepts an OpenAPI 3.1 spec.
+
+---
+
+### Example queries your agent can answer
+
+| Question | Endpoint used |
+|---|---|
+| "How many visitors did I get this week?" | `/api/pageviews` |
+| "What are my top 5 pages?" | `/api/pages?limit=5` |
+| "Where is my traffic coming from?" | `/api/referrers` |
+| "Is traffic growing or dropping?" | `/api/timeseries` |
+| "What's my mobile vs desktop split?" | `/api/devices` |
+| "What languages do my visitors use?" | `/api/languages` |
 
 ---
 
@@ -155,7 +275,7 @@ python bots/discord_bot.py
 
 ```bash
 # Clone and run
-git clone https://github.com/YOUR_USERNAME/NanoAnalytics.git
+git clone https://github.com/callmefredcom/NanoAnalytics.git
 cd NanoAnalytics
 
 # Set your token

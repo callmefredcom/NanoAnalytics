@@ -228,49 +228,90 @@ Works with LangChain tools, LlamaIndex, n8n AI nodes, Make.com HTTP modules, or 
 
 ## Telegram & Discord Bots
 
-Both bots live in the `bots/` folder. They query your analytics API and reply with formatted stats.
+The bots query your NanoAnalytics API and reply with formatted stats. The recommended approach is to deploy each bot as a **separate lightweight service** — its own private repo, its own Railway service. No volume needed (bots store nothing on disk).
 
-### Setup
+---
 
-```bash
-# Install bot dependencies
-pip install "nano-analytics[bots]"
-# or: pip install python-telegram-bot httpx discord.py
+### Recommended: Deploy as a standalone Railway service
+
+**Step 1 — Create a bot repo**
+
+Create a new private GitHub repository with these 4 files:
+
+**`bot.py`** — copy from [`bots/telegram_bot.py`](bots/telegram_bot.py) (Telegram) or [`bots/discord_bot.py`](bots/discord_bot.py) (Discord)
+
+**`requirements.txt`**
+```
+# Telegram
+python-telegram-bot==21.*
+httpx>=0.27
+
+# Discord (use this instead)
+# discord.py>=2.4
+# httpx>=0.27
 ```
 
-### Telegram
-
-1. Message [@BotFather](https://t.me/botfather) → `/newbot` → copy the token
-2. Run:
-
-```bash
-export TELEGRAM_BOT_TOKEN="your-bot-token"
-export ANALYTICS_URL="https://your-instance.railway.app"
-export ANALYTICS_API_TOKEN="your-api-token"
-export ANALYTICS_SITE="mysite.com"
-
-python bots/telegram_bot.py
+**`Dockerfile`**
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY bot.py .
+CMD ["python", "bot.py"]
 ```
 
-**Commands:** `/stats` `/pages` `/referrers` `/devices` `/trend` `/languages`
+**`.env.example`**
+```
+TELEGRAM_BOT_TOKEN=your-token-from-botfather
+ANALYTICS_URL=https://your-nanoanalytics-instance.up.railway.app
+ANALYTICS_API_TOKEN=your-api-token
+ANALYTICS_SITE=mysite.com
+```
 
-### Discord
+**Step 2 — Deploy on Railway**
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → New Application → Bot
+1. Railway → **New Service** → **GitHub** → select your bot repo
+2. Go to **Variables** → add the 4 variables from `.env.example` with real values
+3. No volume needed — the bot has no disk storage
+
+Railway will build the Docker image and keep the bot running 24/7.
+
+---
+
+### Telegram setup
+
+1. Message [@BotFather](https://t.me/botfather) on Telegram → `/newbot` → copy the token → use it as `TELEGRAM_BOT_TOKEN`
+2. Open your bot in Telegram and send `/start`
+
+**Commands:** `/stats` `/pages` `/referrers` `/countries` `/devices` `/trend` `/languages`
+
+---
+
+### Discord setup
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → **New Application** → **Bot**
 2. Enable **Message Content Intent** under Privileged Gateway Intents
-3. Invite the bot with `Send Messages` + `Read Messages` permissions
-4. Run:
-
-```bash
-export DISCORD_BOT_TOKEN="your-bot-token"
-export ANALYTICS_URL="https://your-instance.railway.app"
-export ANALYTICS_API_TOKEN="your-api-token"
-export ANALYTICS_SITE="mysite.com"
-
-python bots/discord_bot.py
-```
+3. Copy the bot token → use it as `DISCORD_BOT_TOKEN`
+4. Invite the bot to your server with **Send Messages** + **Read Messages** permissions
 
 **Commands:** `!stats` `!pages` `!referrers` `!devices` `!trend` `!languages`
+
+---
+
+### Quick local test (no hosting needed)
+
+Run directly in your terminal — the bot stays alive as long as the window is open:
+
+```bash
+pip install python-telegram-bot httpx   # or: discord.py httpx
+
+TELEGRAM_BOT_TOKEN="..." \
+ANALYTICS_URL="https://your-instance.up.railway.app" \
+ANALYTICS_API_TOKEN="..." \
+ANALYTICS_SITE="mysite.com" \
+python bots/telegram_bot.py
+```
 
 ---
 

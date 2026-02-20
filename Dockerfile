@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies first (cached layer)
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir flask gunicorn
+RUN pip install --no-cache-dir flask gunicorn geoip2fast
 
 # Copy application code
 COPY nano_analytics/ nano_analytics/

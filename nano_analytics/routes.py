@@ -1,10 +1,18 @@
 import time
+import ipaddress
 from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory
 
 from .db import get_db
 from .auth import require_token
 from .ua_parser import device_type
 from .openapi import SPEC
+
+# Optional offline GeoIP — bundled database, zero external calls
+try:
+    from geoip2fast import GeoIP2Fast as _GeoIP2Fast
+    _geo = _GeoIP2Fast()
+except Exception:
+    _geo = None
 
 bp = Blueprint("main", __name__)
 
@@ -18,6 +26,27 @@ _GIF_1x1 = (
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _client_ip():
+    """Return the real client IP, respecting X-Forwarded-For from reverse proxies."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or ""
+
+
+def _get_country(ip):
+    """Return a 2-letter ISO country code, or None for private/unknown IPs."""
+    if not ip or not _geo:
+        return None
+    try:
+        if ipaddress.ip_address(ip).is_private:
+            return None
+        result = _geo.lookup(ip)
+        return result.country_code or None
+    except Exception:
+        return None
+
 
 def _query_params():
     site  = request.args.get("site", "")
@@ -71,12 +100,13 @@ def hit():
     ua      = request.headers.get("User-Agent", "")
     w       = int(w_str) if w_str.isdigit() else None
     ts      = int(time.time())
+    country = _get_country(_client_ip())
 
     if site:
         db = get_db()
         db.execute(
-            "INSERT INTO hits (ts, site, path, ref, ua, lang, w, session) VALUES (?,?,?,?,?,?,?,?)",
-            (ts, site, path, ref, ua, lang, w, session),
+            "INSERT INTO hits (ts, site, path, ref, ua, lang, w, session, country) VALUES (?,?,?,?,?,?,?,?,?)",
+            (ts, site, path, ref, ua, lang, w, session, country),
         )
         db.commit()
 
@@ -200,6 +230,21 @@ def languages():
     rows = get_db().execute(
         f"SELECT lang, COUNT(*) AS views FROM hits WHERE {where} AND lang != '' "
         f"GROUP BY lang ORDER BY views DESC LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/countries")
+@require_token
+def countries():
+    """Top countries by pageview count (ISO 3166-1 alpha-2 codes)."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT country, COUNT(*) AS views FROM hits WHERE {where} "
+        f"AND country IS NOT NULL AND country != '' "
+        f"GROUP BY country ORDER BY views DESC LIMIT ?",
         params + [limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])

@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "flask>=3.1",
     "gunicorn>=22",
+    "geoip2fast>=1.2",
 ]
 
 [project.optional-dependencies]

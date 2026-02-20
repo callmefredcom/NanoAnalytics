@@ -174,6 +174,20 @@ SPEC = {
                 },
             },
         ),
+        "/api/countries": _stats_path(
+            "Top countries by pageview count (ISO 3166-1 alpha-2 codes). Detected from visitor IP at collection time.",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "country": {"type": "string", "example": "GB"},
+                        "views":   {"type": "integer"},
+                    },
+                },
+            },
+        ),
         "/api/hostnames": _stats_path(
             "Pageview breakdown by exact hostname (subdomain breakdown). Accepts root domain or any subdomain — all subdomains are matched automatically.",
             has_limit=True,

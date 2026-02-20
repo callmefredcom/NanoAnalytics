@@ -288,6 +288,10 @@
       <h2>Hostnames</h2>
       <table class="data-table" id="tbl-hosts"><tr><td class="skeleton">Loading…</td></tr></table>
     </div>
+    <div class="table-box">
+      <h2>Top Countries</h2>
+      <table class="data-table" id="tbl-countries"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
   </div>
 </div>
 
@@ -394,7 +398,7 @@
   // ── Load all data ──────────────────────────────────────────
   async function load() {
     try {
-      const [pv, pgs, refs, ts, devs, langs, hosts] = await Promise.all([
+      const [pv, pgs, refs, ts, devs, langs, hosts, ctries] = await Promise.all([
         api('/api/pageviews'),
         api('/api/pages'),
         api('/api/referrers'),
@@ -402,6 +406,7 @@
         api('/api/devices'),
         api('/api/languages'),
         api('/api/hostnames'),
+        api('/api/countries'),
       ]);
 
       // Stat cards
@@ -466,6 +471,9 @@
       // Hostnames breakdown
       renderTable('tbl-hosts', hosts, r => [r.site, fmt(r.views)], 'No hostname data yet.');
 
+      // Countries
+      renderTable('tbl-countries', ctries, r => [flag(r.country) + ' ' + r.country, fmt(r.views)], 'No country data yet.');
+
     } catch (e) {
       console.error('NanoAnalytics load error:', e);
     }
@@ -489,6 +497,11 @@
   function fmt(n) {
     if (n == null) return '—';
     return Number(n).toLocaleString();
+  }
+
+  function flag(code) {
+    if (!code || code.length !== 2) return '🌐';
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
   }
 
   function escHtml(s) {

@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS hits (
     ua      TEXT,
     lang    TEXT,
     w       INTEGER,
-    session TEXT
+    session TEXT,
+    country TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_site_ts ON hits(site, ts);
@@ -43,4 +44,9 @@ def init_db(app):
     with app.app_context():
         db = get_db()
         db.executescript(SCHEMA)
-        db.commit()
+        # Non-destructive migration: add country column to existing databases
+        try:
+            db.execute("ALTER TABLE hits ADD COLUMN country TEXT")
+            db.commit()
+        except Exception:
+            pass  # column already exists

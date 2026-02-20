@@ -309,8 +309,7 @@ For production with gunicorn:
 
 ```bash
 API_TOKEN=secret DB_PATH=/data/analytics.db \
-  gunicorn 'nano_analytics:create_app()' \
-  --bind 0.0.0.0:8000 --workers 2
+  gunicorn wsgi:app --bind 0.0.0.0:8000 --workers 2
 ```
 
 ---

@@ -363,7 +363,7 @@ def bounce_rates():
                    ROUND(100.0 * bounces / total_sessions, 1) AS bounce_rate
             FROM page_visits
             WHERE total_sessions >= 3
-            ORDER BY total_sessions DESC
+            ORDER BY bounce_rate DESC
             LIMIT ?""",
         params + [limit],
     ).fetchall()

@@ -450,8 +450,8 @@
           data: tsData,
           fill: true,
           tension: 0.3,
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99,102,241,.1)',
+          borderColor: mode === 'views' ? '#6366f1' : '#10b981',
+          backgroundColor: mode === 'views' ? 'rgba(99,102,241,.1)' : 'rgba(16,185,129,.1)',
           pointRadius: tsLabels.length > 60 ? 0 : 3,
         }]
       },

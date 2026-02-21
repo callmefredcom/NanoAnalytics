@@ -168,6 +168,31 @@
       margin-bottom: .75rem;
     }
 
+    /* ── Traffic chart toggle ───────────────────────────────── */
+    .ts-toggle {
+      display: flex;
+      gap: .25rem;
+      background: var(--bg);
+      border-radius: 6px;
+      padding: .2rem;
+    }
+    .ts-btn {
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .25rem .65rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+      transition: background .15s, color .15s;
+    }
+    .ts-btn-active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    }
+
     /* ── Tables row ─────────────────────────────────────────── */
     .tables-row {
       display: grid;
@@ -326,7 +351,13 @@
 
   <div class="charts-row">
     <div class="chart-box">
-      <h2>Traffic over time</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <h2 style="margin:0">Traffic over time</h2>
+        <div class="ts-toggle">
+          <button id="btn-ts-views" class="ts-btn ts-btn-active" onclick="switchTsMode('views')">Views</button>
+          <button id="btn-ts-sessions" class="ts-btn" onclick="switchTsMode('sessions')">Sessions</button>
+        </div>
+      </div>
       <canvas id="chart-ts" height="80"></canvas>
     </div>
     <div class="chart-box">
@@ -399,10 +430,49 @@
     TT:[10.7,-61.2],BB:[13.2,-59.6],JE:[49.2,-2.1],CW:[12.2,-69.0],
   };
 
-  let tsChart  = null;
-  let devChart = null;
+  let tsChart   = null;
+  let tsRawData = null;
+  let tsMode    = 'views';
+  let devChart  = null;
   let liveMap  = null;
   let liveMarkers = [];
+
+  function renderTsChart(mode) {
+    const tsLabels = tsRawData.map(r => r.day);
+    const tsData   = tsRawData.map(r => r[mode]);
+    if (tsChart) tsChart.destroy();
+    tsChart = new Chart(document.getElementById('chart-ts'), {
+      type: 'line',
+      data: {
+        labels: tsLabels,
+        datasets: [{
+          label: mode === 'views' ? 'Views' : 'Sessions',
+          data: tsData,
+          fill: true,
+          tension: 0.3,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,.1)',
+          pointRadius: tsLabels.length > 60 ? 0 : 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+          y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
+        },
+      }
+    });
+  }
+
+  function switchTsMode(mode) {
+    tsMode = mode;
+    document.getElementById('btn-ts-views').classList.toggle('ts-btn-active', mode === 'views');
+    document.getElementById('btn-ts-sessions').classList.toggle('ts-btn-active', mode === 'sessions');
+    if (tsRawData) renderTsChart(mode);
+  }
+
 
   // ── Live map ───────────────────────────────────────────────
   function initLiveMap() {
@@ -571,32 +641,8 @@
       document.getElementById('stat-sessions').textContent = fmt(pv.sessions);
 
       // Timeseries line chart
-      const tsLabels = ts.map(r => r.day);
-      const tsData   = ts.map(r => r.views);
-      if (tsChart) tsChart.destroy();
-      tsChart = new Chart(document.getElementById('chart-ts'), {
-        type: 'line',
-        data: {
-          labels: tsLabels,
-          datasets: [{
-            label: 'Views',
-            data: tsData,
-            fill: true,
-            tension: 0.3,
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99,102,241,.1)',
-            pointRadius: tsLabels.length > 60 ? 0 : 3,
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
-            y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
-          },
-        }
-      });
+      tsRawData = ts;
+      renderTsChart(tsMode);
 
       // Devices doughnut
       if (devChart) devChart.destroy();

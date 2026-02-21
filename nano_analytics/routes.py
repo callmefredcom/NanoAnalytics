@@ -197,11 +197,12 @@ def referrers():
 @bp.route("/api/timeseries")
 @require_token
 def timeseries():
-    """Daily pageviews grouped by UTC date."""
+    """Daily pageviews and sessions grouped by UTC date."""
     site, start, end, _ = _query_params()
     where, params = _where(site, start, end)
     rows = get_db().execute(
-        f"SELECT date(ts, 'unixepoch') AS day, COUNT(*) AS views "
+        f"SELECT date(ts, 'unixepoch') AS day, COUNT(*) AS views, "
+        f"COUNT(DISTINCT session) AS sessions "
         f"FROM hits WHERE {where} GROUP BY day ORDER BY day",
         params,
     ).fetchall()

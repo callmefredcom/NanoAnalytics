@@ -354,8 +354,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
         <h2 style="margin:0">Traffic over time</h2>
         <div class="ts-toggle">
-          <button id="btn-ts-views" class="ts-btn ts-btn-active" onclick="switchTsMode('views')">Views</button>
-          <button id="btn-ts-sessions" class="ts-btn" onclick="switchTsMode('sessions')">Sessions</button>
+          <button id="btn-ts-views" class="ts-btn ts-btn-active">Views</button>
+          <button id="btn-ts-sessions" class="ts-btn">Sessions</button>
         </div>
       </div>
       <canvas id="chart-ts" height="80"></canvas>
@@ -473,6 +473,8 @@
     if (tsRawData) renderTsChart(mode);
   }
 
+  document.getElementById('btn-ts-views').addEventListener('click', () => switchTsMode('views'));
+  document.getElementById('btn-ts-sessions').addEventListener('click', () => switchTsMode('sessions'));
 
   // ── Live map ───────────────────────────────────────────────
   function initLiveMap() {

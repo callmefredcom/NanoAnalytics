@@ -337,6 +337,10 @@
       <div class="label">Sessions</div>
       <div class="value" id="stat-sessions">—</div>
     </div>
+    <div class="card">
+      <div class="label">Pages / Session</div>
+      <div class="value" id="stat-pps">—</div>
+    </div>
   </div>
 
   <div class="live-box">
@@ -386,6 +390,18 @@
     <div class="table-box">
       <h2>Top Countries</h2>
       <table class="data-table" id="tbl-countries"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Entry Pages</h2>
+      <table class="data-table" id="tbl-entry"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Peak Hours</h2>
+      <table class="data-table" id="tbl-hours"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Bounce Rate</h2>
+      <table class="data-table" id="tbl-bounce"><tr><td class="skeleton">Loading…</td></tr></table>
     </div>
   </div>
 </div>
@@ -627,7 +643,7 @@
   // ── Load all data ──────────────────────────────────────────
   async function load() {
     try {
-      const [pv, pgs, refs, ts, devs, langs, hosts, ctries] = await Promise.all([
+      const [pv, pgs, refs, ts, devs, langs, hosts, ctries, entryPgs, peakHrs, bounceRates] = await Promise.all([
         api('/api/pageviews'),
         api('/api/pages'),
         api('/api/referrers'),
@@ -636,11 +652,15 @@
         api('/api/languages'),
         api('/api/hostnames'),
         api('/api/countries'),
+        api('/api/entry-pages'),
+        api('/api/peak-hours'),
+        api('/api/bounce-rates'),
       ]);
 
       // Stat cards
       document.getElementById('stat-views').textContent    = fmt(pv.views);
       document.getElementById('stat-sessions').textContent = fmt(pv.sessions);
+      document.getElementById('stat-pps').textContent      = pv.sessions > 0 ? (pv.views / pv.sessions).toFixed(1) : '—';
 
       // Timeseries line chart
       tsRawData = ts;
@@ -679,6 +699,15 @@
       // Countries
       renderTable('tbl-countries', ctries, r => [flag(r.country) + ' ' + r.country, fmt(r.views)], 'No country data yet.');
 
+      // Entry Pages
+      renderTable('tbl-entry', entryPgs, r => [r.path, fmt(r.entries)], 'No entry page data yet.');
+
+      // Peak Hours
+      renderTable('tbl-hours', peakHrs, r => [fmtHour(r.hour), fmt(r.views)], 'No hour data yet.');
+
+      // Bounce Rate
+      renderTable('tbl-bounce', bounceRates, r => [r.path, r.bounce_rate + '%'], 'Not enough data yet.');
+
     } catch (e) {
       console.error('NanoAnalytics load error:', e);
     }
@@ -702,6 +731,14 @@
   function fmt(n) {
     if (n == null) return '—';
     return Number(n).toLocaleString();
+  }
+
+  function fmtHour(h) {
+    const hour = parseInt(h);
+    if (hour === 0)  return '12am';
+    if (hour < 12)   return `${hour}am`;
+    if (hour === 12) return '12pm';
+    return `${hour - 12}pm`;
   }
 
   function flag(code) {

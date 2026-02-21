@@ -295,3 +295,76 @@ def hostnames():
         params + [limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/entry-pages")
+@require_token
+def entry_pages():
+    """Top entry pages — first path seen in each session."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"""WITH filtered AS (
+              SELECT session, path, ts FROM hits WHERE {where}
+            ),
+            session_first AS (
+              SELECT session, MIN(ts) AS first_ts FROM filtered GROUP BY session
+            ),
+            entries AS (
+              SELECT f.path FROM filtered f
+              JOIN session_first sf ON f.session = sf.session AND f.ts = sf.first_ts
+            )
+            SELECT path, COUNT(*) AS entries
+            FROM entries
+            GROUP BY path ORDER BY entries DESC LIMIT ?""",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/peak-hours")
+@require_token
+def peak_hours():
+    """Pageview count grouped by hour of day (0–23, UTC), top 10 busiest."""
+    site, start, end, _ = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT CAST(strftime('%H', ts, 'unixepoch') AS INTEGER) AS hour, "
+        f"COUNT(*) AS views FROM hits WHERE {where} "
+        f"GROUP BY hour ORDER BY views DESC LIMIT 10",
+        params,
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/bounce-rates")
+@require_token
+def bounce_rates():
+    """Bounce rate per page — % of sessions that only ever viewed that one page."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"""WITH filtered AS (
+              SELECT session, path FROM hits WHERE {where}
+            ),
+            session_sizes AS (
+              SELECT session, COUNT(*) AS hit_count FROM filtered GROUP BY session
+            ),
+            page_visits AS (
+              SELECT f.path,
+                     COUNT(DISTINCT f.session) AS total_sessions,
+                     SUM(CASE WHEN ss.hit_count = 1 THEN 1 ELSE 0 END) AS bounces
+              FROM filtered f
+              JOIN session_sizes ss ON f.session = ss.session
+              GROUP BY f.path
+            )
+            SELECT path,
+                   total_sessions,
+                   ROUND(100.0 * bounces / total_sessions, 1) AS bounce_rate
+            FROM page_visits
+            WHERE total_sessions >= 3
+            ORDER BY total_sessions DESC
+            LIMIT ?""",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])

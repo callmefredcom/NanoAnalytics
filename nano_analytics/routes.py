@@ -345,7 +345,7 @@ def bounce_rates():
     where, params = _where(site, start, end)
     rows = get_db().execute(
         f"""WITH filtered AS (
-              SELECT session, path FROM hits WHERE {where}
+              SELECT session, path FROM hits WHERE {where} AND path NOT LIKE '/static/%'
             ),
             session_sizes AS (
               SELECT session, COUNT(*) AS hit_count FROM filtered GROUP BY session

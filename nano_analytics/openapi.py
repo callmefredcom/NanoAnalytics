@@ -229,5 +229,47 @@ SPEC = {
                 },
             },
         ),
+        "/api/entry-pages": _stats_path(
+            "Top entry pages — the first page seen in each session, ranked by how often sessions begin there. Distinct from top pages by total views.",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path":    {"type": "string"},
+                        "entries": {"type": "integer", "description": "Number of sessions that started on this page"},
+                    },
+                },
+            },
+        ),
+        "/api/peak-hours": _stats_path(
+            "Top 10 busiest hours of day (UTC, 0–23) by pageview count. Useful for scheduling content or launches at peak audience times.",
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "hour":  {"type": "integer", "minimum": 0, "maximum": 23, "description": "Hour of day in UTC (0 = midnight, 12 = noon)"},
+                        "views": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+        "/api/bounce-rates": _stats_path(
+            "Bounce rate per page — percentage of sessions that visited only that one page and nothing else. Ordered highest to lowest. Only pages with 3+ sessions are included. /static/ paths are excluded.",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path":             {"type": "string"},
+                        "total_sessions":   {"type": "integer", "description": "Total sessions that included this page"},
+                        "bounce_rate":      {"type": "number",  "description": "Bounce rate as a percentage (0–100)"},
+                    },
+                },
+            },
+        ),
     },
 }

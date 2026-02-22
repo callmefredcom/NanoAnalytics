@@ -279,6 +279,20 @@
       color: var(--muted);
       margin-left: auto;
     }
+    .live-filter-btn {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      padding: .22rem .55rem; cursor: pointer; color: var(--muted);
+      font-size: .75rem; font-weight: 600; transition: all .15s;
+      display: inline-flex; align-items: center; gap: .3rem; line-height: 1;
+    }
+    .live-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .live-filter-btn.active {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+    }
+    .live-box.filtering {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
     #live-map {
       height: 340px;
       border-radius: 6px;
@@ -413,6 +427,12 @@
       <h2><span class="live-dot"></span> Live</h2>
       <span class="active-badge" id="active-count">—</span>
       <span style="font-size:.8rem;color:var(--muted)">active now</span>
+      <button id="live-filter-btn" class="live-filter-btn" title="Filter entire dashboard to live visitors only">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M1.5 2h13a.5.5 0 0 1 .354.854L10 8.207V13.5a.5.5 0 0 1-.276.447l-3 1.5A.5.5 0 0 1 6 15V8.207L1.146 2.854A.5.5 0 0 1 1.5 2z"/>
+        </svg>
+        Filter live
+      </button>
       <span class="live-hint">last 5 min · refreshes every 30s</span>
     </div>
     <div id="live-map"></div>
@@ -533,7 +553,8 @@
   let devChart  = null;
   let liveMap  = null;
   let liveMarkers = [];
-  let activeFilters = []; // [{ field, value }, ...]
+  let activeFilters    = []; // [{ field, value }, ...]
+  let liveFilterActive = false;
 
   const FILTER_FIELDS = {
     path:     'Page path contains',
@@ -720,7 +741,11 @@
   async function api(path, skipFilter = false) {
     const token = localStorage.getItem(LS_TOKEN);
     const site  = localStorage.getItem(LS_SITE);
-    const { start, end } = getRange();
+    let { start, end } = getRange();
+    if (liveFilterActive) {
+      end   = Math.floor(Date.now() / 1000);
+      start = end - 300;
+    }
     const qs = new URLSearchParams({ site, start, end, limit: 10 });
     if (!skipFilter) {
       for (const f of activeFilters) qs.set(`filter_${f.field}`, f.value);
@@ -1030,6 +1055,16 @@
       });
     });
   }
+
+  // ── Live filter toggle ─────────────────────────────────────
+  document.getElementById('live-filter-btn').addEventListener('click', () => {
+    liveFilterActive = !liveFilterActive;
+    const btn     = document.getElementById('live-filter-btn');
+    const liveBox = document.querySelector('.live-box');
+    btn.classList.toggle('active',     liveFilterActive);
+    liveBox.classList.toggle('filtering', liveFilterActive);
+    load();
+  });
 
   init();
 })();

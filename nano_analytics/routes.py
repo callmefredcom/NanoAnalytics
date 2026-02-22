@@ -518,7 +518,7 @@ def filter_values():
     rows = get_db().execute(
         f"SELECT {col} AS value, COUNT(*) AS n FROM hits "
         f"WHERE {where} AND {col} IS NOT NULL AND {col} != '' "
-        f"{extra_clause} GROUP BY {col} ORDER BY n DESC LIMIT 10",
+        f"{extra_clause} GROUP BY {col} ORDER BY n DESC",
         params + extra_params,
     ).fetchall()
     return jsonify([dict(r) for r in rows])

@@ -313,13 +313,9 @@
       border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
       z-index: 200; min-width: 260px; overflow: hidden;
     }
-    .filter-opt {
-      padding: .5rem .85rem; font-size: .85rem; cursor: pointer;
-      display: flex; align-items: center; gap: .6rem;
-    }
     .filter-opt:hover, .filter-opt.highlighted { background: var(--accent-light); }
     .filter-opt code { color: var(--accent); font-weight: 700; font-size: .82rem; }
-    .filter-opt small { color: var(--muted); }
+    .filter-opt small { color: var(--muted); white-space: nowrap; }
     .filter-chip {
       display: inline-flex; align-items: center; gap: .3rem;
       background: var(--accent-light); color: var(--accent);
@@ -328,6 +324,10 @@
     }
     .filter-chip-x { cursor: pointer; opacity: .6; font-size: 1rem; line-height: 1; }
     .filter-chip-x:hover { opacity: 1; }
+    #filter-chip { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+    .filter-opt { padding: .5rem .85rem; font-size: .85rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+    .filter-opt-val { font-weight: 600; flex: 1; }
 
     /* ── Stat % badge ───────────────────────────────────────── */
     .stat-pct { font-size: .72rem; color: var(--muted); margin-top: .1rem; min-height: .9rem; }
@@ -533,7 +533,7 @@
   let devChart  = null;
   let liveMap  = null;
   let liveMarkers = [];
-  let activeFilter = null; // { field, value } or null
+  let activeFilters = []; // [{ field, value }, ...]
 
   const FILTER_FIELDS = {
     path:     'Page path contains',
@@ -722,9 +722,8 @@
     const site  = localStorage.getItem(LS_SITE);
     const { start, end } = getRange();
     const qs = new URLSearchParams({ site, start, end, limit: 10 });
-    if (activeFilter && !skipFilter) {
-      qs.set('filter_field', activeFilter.field);
-      qs.set('filter_value', activeFilter.value);
+    if (!skipFilter) {
+      for (const f of activeFilters) qs.set(`filter_${f.field}`, f.value);
     }
     const r = await fetch(`${path}?${qs}`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -753,7 +752,7 @@
         api('/api/browsers'),
         api('/api/os'),
         api('/api/session-duration'),
-        activeFilter ? api('/api/pageviews', true) : Promise.resolve(null),
+        activeFilters.length ? api('/api/pageviews', true) : Promise.resolve(null),
       ]);
 
       // Stat cards
@@ -763,7 +762,7 @@
       document.getElementById('stat-duration').textContent = fmtDuration(duration.avg_seconds);
 
       // % of total badges (only when filter is active)
-      if (activeFilter && total) {
+      if (activeFilters.length && total) {
         const pctOf = (n, d) => d > 0 ? `${Math.round(n * 100 / d)}% of ${fmt(d)}` : '—';
         document.getElementById('stat-views-pct').textContent    = pctOf(pv.views,    total.views);
         document.getElementById('stat-sessions-pct').textContent = pctOf(pv.sessions, total.sessions);
@@ -896,11 +895,14 @@
   const _fInput    = document.getElementById('filter-input');
   const _fDropdown = document.getElementById('filter-dropdown');
   const _fChip     = document.getElementById('filter-chip');
-  let _highlightIdx = -1;
+  let _highlightIdx  = -1;
+  let _valueResults  = [];
+  let _valueField    = null;
+  let _valueDebounce = null;
 
-  function _buildDropdown(query) {
-    const q = query.toLowerCase().replace(/^\//, '');
-    const matches = Object.entries(FILTER_FIELDS).filter(([k]) => k.startsWith(q));
+  // Show field-selection dropdown (after typing /)
+  function _buildFieldDropdown(q) {
+    const matches = Object.entries(FILTER_FIELDS).filter(([k]) => k.startsWith(q.replace(/^\//, '')));
     if (!matches.length) { _fDropdown.style.display = 'none'; return; }
     _highlightIdx = -1;
     _fDropdown.innerHTML = matches.map(([field, label]) =>
@@ -915,6 +917,37 @@
         _fInput.value = `/${el.dataset.field} `;
         _fDropdown.style.display = 'none';
         _fInput.focus();
+        _loadValueDropdown(el.dataset.field, '');
+      });
+    });
+  }
+
+  // Fetch and show value-autocomplete dropdown (after field is chosen)
+  async function _loadValueDropdown(field, q) {
+    _valueField = field;
+    const token = localStorage.getItem(LS_TOKEN);
+    const site  = localStorage.getItem(LS_SITE);
+    const { start, end } = getRange();
+    const qs = new URLSearchParams({ site, start, end, field });
+    if (q) qs.set('q', q);
+    for (const f of activeFilters) qs.set(`filter_${f.field}`, f.value);
+    try {
+      const r = await fetch(`/api/filter-values?${qs}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      _valueResults = await r.json();
+    } catch(e) { _valueResults = []; }
+    if (!_valueResults.length) { _fDropdown.style.display = 'none'; return; }
+    _highlightIdx = -1;
+    _fDropdown.innerHTML = _valueResults.map((row, i) =>
+      `<div class="filter-opt" data-i="${i}">
+        <span class="filter-opt-val">${escHtml(String(row.value))}</span>
+        <small>${fmt(row.n)}</small>
+      </div>`
+    ).join('');
+    _fDropdown.style.display = 'block';
+    _fDropdown.querySelectorAll('.filter-opt').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        _applyFilter(`/${_valueField} ${_valueResults[+el.dataset.i].value}`);
       });
     });
   }
@@ -923,29 +956,43 @@
     const opts = _fDropdown.querySelectorAll('.filter-opt');
     if (!opts.length) return;
     opts[_highlightIdx]?.classList.remove('highlighted');
-    _highlightIdx = (_highlightIdx + dir + opts.length) % opts.length;
+    _highlightIdx = ((_highlightIdx + dir) % opts.length + opts.length) % opts.length;
     opts[_highlightIdx].classList.add('highlighted');
   }
 
   _fInput.addEventListener('input', function() {
-    const val = this.value;
-    if (val.startsWith('/') && !val.includes(' ')) {
-      _buildDropdown(val);
+    const val  = this.value;
+    const sp   = val.indexOf(' ');
+    if (!val.startsWith('/')) { _fDropdown.style.display = 'none'; return; }
+    if (sp === -1) {
+      _buildFieldDropdown(val);
     } else {
-      _fDropdown.style.display = 'none';
+      const field = val.slice(1, sp);
+      const q     = val.slice(sp + 1);
+      if (FILTER_FIELDS[field]) {
+        clearTimeout(_valueDebounce);
+        _valueDebounce = setTimeout(() => _loadValueDropdown(field, q), 120);
+      } else {
+        _fDropdown.style.display = 'none';
+      }
     }
   });
 
   _fInput.addEventListener('keydown', function(e) {
     if (_fDropdown.style.display !== 'none') {
-      if (e.key === 'ArrowDown') { e.preventDefault(); _highlightOpt(1); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); _highlightOpt(1);  return; }
       if (e.key === 'ArrowUp')   { e.preventDefault(); _highlightOpt(-1); return; }
       if (e.key === 'Enter') {
         const hi = _fDropdown.querySelector('.highlighted');
         if (hi) {
           e.preventDefault();
-          _fInput.value = `/${hi.dataset.field} `;
-          _fDropdown.style.display = 'none';
+          if (hi.dataset.field) {
+            _fInput.value = `/${hi.dataset.field} `;
+            _fDropdown.style.display = 'none';
+            _loadValueDropdown(hi.dataset.field, '');
+          } else if (hi.dataset.i !== undefined) {
+            _applyFilter(`/${_valueField} ${_valueResults[+hi.dataset.i].value}`);
+          }
           return;
         }
       }
@@ -959,22 +1006,28 @@
   function _applyFilter(raw) {
     const m = raw.match(/^\/(\w+)\s+(.+)$/);
     if (!m || !FILTER_FIELDS[m[1]]) return;
-    activeFilter = { field: m[1], value: m[2].trim() };
+    const field = m[1], value = m[2].trim();
+    const idx = activeFilters.findIndex(f => f.field === field);
+    if (idx >= 0) activeFilters[idx] = { field, value };
+    else activeFilters.push({ field, value });
     _fInput.value = '';
-    _renderChip();
+    _fDropdown.style.display = 'none';
+    _renderChips();
     load();
   }
 
-  function _renderChip() {
-    if (!activeFilter) { _fChip.innerHTML = ''; return; }
-    _fChip.innerHTML =
-      `<span class="filter-chip">` +
-      `<code>/${activeFilter.field}</code> ${escHtml(activeFilter.value)}` +
-      `<span class="filter-chip-x" id="filter-clear">×</span></span>`;
-    document.getElementById('filter-clear').addEventListener('click', () => {
-      activeFilter = null;
-      _renderChip();
-      load();
+  function _renderChips() {
+    if (!activeFilters.length) { _fChip.innerHTML = ''; return; }
+    _fChip.innerHTML = activeFilters.map((f, i) =>
+      `<span class="filter-chip"><code>/${f.field}</code> ${escHtml(f.value)}` +
+      `<span class="filter-chip-x" data-i="${i}">×</span></span>`
+    ).join('');
+    _fChip.querySelectorAll('.filter-chip-x').forEach(el => {
+      el.addEventListener('click', () => {
+        activeFilters.splice(+el.dataset.i, 1);
+        _renderChips();
+        load();
+      });
     });
   }
 

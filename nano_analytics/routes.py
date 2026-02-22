@@ -63,14 +63,23 @@ def _root_domain(site):
     return site
 
 
+_FILTER_COLS = {
+    "path":     ("path",    "LIKE"),
+    "referrer": ("ref",     "LIKE"),
+    "country":  ("country", "="),
+    "language": ("lang",    "LIKE"),
+}
+
+
 def _where(site, start, end):
     """Build a WHERE clause matching the root domain and all its subdomains.
 
     e.g. site='flaskvibe.com' matches flaskvibe.com, www.flaskvibe.com,
     app.flaskvibe.com, etc.  site='www.flaskvibe.com' is normalised first.
 
-    Optionally reads filter_field / filter_value from the current request to
-    narrow results by a single dimension (path, referrer, country, language).
+    Reads additive dimension filters from the current request via
+    filter_<field> params (filter_path, filter_referrer, filter_country,
+    filter_language). Multiple filters are ANDed together.
     """
     root = _root_domain(site)
     clauses = ["(site = ? OR site LIKE ?)"]
@@ -81,19 +90,15 @@ def _where(site, start, end):
     if end:
         clauses.append("ts <= ?")
         params.append(end)
-    ff = request.args.get("filter_field", "").strip()
-    fv = request.args.get("filter_value", "").strip()
-    if ff and fv:
-        _COL_MAP = {
-            "path":     ("path",    "LIKE", f"%{fv}%"),
-            "referrer": ("ref",     "LIKE", f"%{fv}%"),
-            "country":  ("country", "=",    fv.upper()),
-            "language": ("lang",    "LIKE", f"%{fv}%"),
-        }
-        if ff in _COL_MAP:
-            col, op, val = _COL_MAP[ff]
-            clauses.append(f"{col} {op} ?")
-            params.append(val)
+    for fname, (col, op) in _FILTER_COLS.items():
+        fv = request.args.get(f"filter_{fname}", "").strip()
+        if fv:
+            if op == "LIKE":
+                clauses.append(f"{col} LIKE ?")
+                params.append(f"%{fv}%")
+            else:
+                clauses.append(f"{col} = ?")
+                params.append(fv.upper())
     return " AND ".join(clauses), params
 
 
@@ -484,3 +489,36 @@ def session_duration():
     ).fetchone()
     avg = round(row["avg_seconds"], 1) if row["avg_seconds"] else 0
     return jsonify({"avg_seconds": avg, "sessions": row["sessions"]})
+
+
+@bp.route("/api/filter-values")
+@require_token
+def filter_values():
+    """Return top distinct values for a filter field, for autocomplete.
+
+    Respects all currently-active filters (via filter_* params) so the
+    suggestions reflect the already-filtered data set.
+    """
+    site, start, end, _ = _query_params()
+    field = request.args.get("field", "").strip()
+    q     = request.args.get("q",     "").strip()
+
+    if field not in _FILTER_COLS:
+        return jsonify([])
+
+    col = _FILTER_COLS[field][0]
+    where, params = _where(site, start, end)
+
+    extra_clause = ""
+    extra_params: list = []
+    if q:
+        extra_clause = f"AND {col} LIKE ?"
+        extra_params = [f"%{q}%"]
+
+    rows = get_db().execute(
+        f"SELECT {col} AS value, COUNT(*) AS n FROM hits "
+        f"WHERE {where} AND {col} IS NOT NULL AND {col} != '' "
+        f"{extra_clause} GROUP BY {col} ORDER BY n DESC LIMIT 10",
+        params + extra_params,
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])

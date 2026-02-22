@@ -68,6 +68,9 @@ def _where(site, start, end):
 
     e.g. site='flaskvibe.com' matches flaskvibe.com, www.flaskvibe.com,
     app.flaskvibe.com, etc.  site='www.flaskvibe.com' is normalised first.
+
+    Optionally reads filter_field / filter_value from the current request to
+    narrow results by a single dimension (path, referrer, country, language).
     """
     root = _root_domain(site)
     clauses = ["(site = ? OR site LIKE ?)"]
@@ -78,6 +81,19 @@ def _where(site, start, end):
     if end:
         clauses.append("ts <= ?")
         params.append(end)
+    ff = request.args.get("filter_field", "").strip()
+    fv = request.args.get("filter_value", "").strip()
+    if ff and fv:
+        _COL_MAP = {
+            "path":     ("path",    "LIKE", f"%{fv}%"),
+            "referrer": ("ref",     "LIKE", f"%{fv}%"),
+            "country":  ("country", "=",    fv.upper()),
+            "language": ("lang",    "LIKE", f"%{fv}%"),
+        }
+        if ff in _COL_MAP:
+            col, op, val = _COL_MAP[ff]
+            clauses.append(f"{col} {op} ?")
+            params.append(val)
     return " AND ".join(clauses), params
 
 

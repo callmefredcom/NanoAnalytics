@@ -286,6 +286,52 @@
       z-index: 0;
     }
 
+    /* ── Filter bar ─────────────────────────────────────────── */
+    .filter-bar { position: relative; margin-bottom: 1.25rem; }
+    .filter-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .filter-input-wrap { position: relative; flex: 1; max-width: 460px; }
+    .filter-input-wrap input {
+      width: 100%;
+      padding: .45rem .75rem .45rem 2rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .88rem;
+      background: var(--surface);
+      outline: none;
+      font-family: inherit;
+      transition: border-color .15s;
+    }
+    .filter-input-wrap input:focus { border-color: var(--accent); }
+    .filter-icon {
+      position: absolute; left: .6rem; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted); pointer-events: none; font-size: .95rem;
+    }
+    .filter-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+      z-index: 200; min-width: 260px; overflow: hidden;
+    }
+    .filter-opt {
+      padding: .5rem .85rem; font-size: .85rem; cursor: pointer;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .filter-opt:hover, .filter-opt.highlighted { background: var(--accent-light); }
+    .filter-opt code { color: var(--accent); font-weight: 700; font-size: .82rem; }
+    .filter-opt small { color: var(--muted); }
+    .filter-chip {
+      display: inline-flex; align-items: center; gap: .3rem;
+      background: var(--accent-light); color: var(--accent);
+      border: 1px solid #c7d2fe; border-radius: 20px;
+      padding: .28rem .7rem; font-size: .82rem; font-weight: 600;
+    }
+    .filter-chip-x { cursor: pointer; opacity: .6; font-size: 1rem; line-height: 1; }
+    .filter-chip-x:hover { opacity: 1; }
+
+    /* ── Stat % badge ───────────────────────────────────────── */
+    .stat-pct { font-size: .72rem; color: var(--muted); margin-top: .1rem; min-height: .9rem; }
+
     /* ── Loading / empty states ─────────────────────────────── */
     .skeleton { color: var(--muted); font-style: italic; font-size: .85rem; }
     .empty { color: var(--muted); font-size: .85rem; }
@@ -328,22 +374,37 @@
     </div>
   </header>
 
+  <div class="filter-bar" id="filter-bar">
+    <div class="filter-row">
+      <div class="filter-input-wrap">
+        <span class="filter-icon">⌕</span>
+        <input id="filter-input" type="text" placeholder="Filter… (type / for options — e.g. /path blog, /referrer google.com)" autocomplete="off" spellcheck="false">
+        <div id="filter-dropdown" class="filter-dropdown" style="display:none"></div>
+      </div>
+      <div id="filter-chip"></div>
+    </div>
+  </div>
+
   <div class="cards">
     <div class="card">
       <div class="label">Page Views</div>
       <div class="value" id="stat-views">—</div>
+      <div class="stat-pct" id="stat-views-pct"></div>
     </div>
     <div class="card">
       <div class="label">Sessions</div>
       <div class="value" id="stat-sessions">—</div>
+      <div class="stat-pct" id="stat-sessions-pct"></div>
     </div>
     <div class="card">
       <div class="label">Pages / Session</div>
       <div class="value" id="stat-pps">—</div>
+      <div class="stat-pct" id="stat-pps-pct"></div>
     </div>
     <div class="card">
       <div class="label">Avg. Session Duration</div>
       <div class="value" id="stat-duration">—</div>
+      <div class="stat-pct" id="stat-duration-pct"></div>
     </div>
   </div>
 
@@ -472,6 +533,14 @@
   let devChart  = null;
   let liveMap  = null;
   let liveMarkers = [];
+  let activeFilter = null; // { field, value } or null
+
+  const FILTER_FIELDS = {
+    path:     'Page path contains',
+    referrer: 'Referrer contains',
+    country:  'Country code equals',
+    language: 'Language contains',
+  };
 
   function renderTsChart(mode) {
     const tsLabels = tsRawData.map(r => r.day);
@@ -648,11 +717,15 @@
   }
 
   // ── API helper ─────────────────────────────────────────────
-  async function api(path) {
+  async function api(path, skipFilter = false) {
     const token = localStorage.getItem(LS_TOKEN);
     const site  = localStorage.getItem(LS_SITE);
     const { start, end } = getRange();
     const qs = new URLSearchParams({ site, start, end, limit: 10 });
+    if (activeFilter && !skipFilter) {
+      qs.set('filter_field', activeFilter.field);
+      qs.set('filter_value', activeFilter.value);
+    }
     const r = await fetch(`${path}?${qs}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -663,7 +736,7 @@
   // ── Load all data ──────────────────────────────────────────
   async function load() {
     try {
-      const [pv, pgs, refs, ts, devs, langs, hosts, ctries, entryPgs, peakHrs, bounceRates, exitPgs, screens, browsers, osData, duration] = await Promise.all([
+      const [pv, pgs, refs, ts, devs, langs, hosts, ctries, entryPgs, peakHrs, bounceRates, exitPgs, screens, browsers, osData, duration, total] = await Promise.all([
         api('/api/pageviews'),
         api('/api/pages'),
         api('/api/referrers'),
@@ -680,6 +753,7 @@
         api('/api/browsers'),
         api('/api/os'),
         api('/api/session-duration'),
+        activeFilter ? api('/api/pageviews', true) : Promise.resolve(null),
       ]);
 
       // Stat cards
@@ -687,6 +761,20 @@
       document.getElementById('stat-sessions').textContent = fmt(pv.sessions);
       document.getElementById('stat-pps').textContent      = pv.sessions > 0 ? (pv.views / pv.sessions).toFixed(1) : '—';
       document.getElementById('stat-duration').textContent = fmtDuration(duration.avg_seconds);
+
+      // % of total badges (only when filter is active)
+      if (activeFilter && total) {
+        const pctOf = (n, d) => d > 0 ? `${Math.round(n * 100 / d)}% of ${fmt(d)}` : '—';
+        document.getElementById('stat-views-pct').textContent    = pctOf(pv.views,    total.views);
+        document.getElementById('stat-sessions-pct').textContent = pctOf(pv.sessions, total.sessions);
+        const totalPps = total.sessions > 0 ? (total.views / total.sessions).toFixed(1) : null;
+        document.getElementById('stat-pps-pct').textContent = totalPps ? `vs ${totalPps} total` : '';
+        document.getElementById('stat-duration-pct').textContent = '';
+      } else {
+        ['views', 'sessions', 'pps', 'duration'].forEach(k => {
+          document.getElementById(`stat-${k}-pct`).textContent = '';
+        });
+      }
 
       // Timeseries line chart
       tsRawData = ts;
@@ -802,6 +890,92 @@
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Filter bar ─────────────────────────────────────────────
+  const _fInput    = document.getElementById('filter-input');
+  const _fDropdown = document.getElementById('filter-dropdown');
+  const _fChip     = document.getElementById('filter-chip');
+  let _highlightIdx = -1;
+
+  function _buildDropdown(query) {
+    const q = query.toLowerCase().replace(/^\//, '');
+    const matches = Object.entries(FILTER_FIELDS).filter(([k]) => k.startsWith(q));
+    if (!matches.length) { _fDropdown.style.display = 'none'; return; }
+    _highlightIdx = -1;
+    _fDropdown.innerHTML = matches.map(([field, label]) =>
+      `<div class="filter-opt" data-field="${field}">
+        <code>/${field}</code><small>${label}</small>
+      </div>`
+    ).join('');
+    _fDropdown.style.display = 'block';
+    _fDropdown.querySelectorAll('.filter-opt').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        _fInput.value = `/${el.dataset.field} `;
+        _fDropdown.style.display = 'none';
+        _fInput.focus();
+      });
+    });
+  }
+
+  function _highlightOpt(dir) {
+    const opts = _fDropdown.querySelectorAll('.filter-opt');
+    if (!opts.length) return;
+    opts[_highlightIdx]?.classList.remove('highlighted');
+    _highlightIdx = (_highlightIdx + dir + opts.length) % opts.length;
+    opts[_highlightIdx].classList.add('highlighted');
+  }
+
+  _fInput.addEventListener('input', function() {
+    const val = this.value;
+    if (val.startsWith('/') && !val.includes(' ')) {
+      _buildDropdown(val);
+    } else {
+      _fDropdown.style.display = 'none';
+    }
+  });
+
+  _fInput.addEventListener('keydown', function(e) {
+    if (_fDropdown.style.display !== 'none') {
+      if (e.key === 'ArrowDown') { e.preventDefault(); _highlightOpt(1); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); _highlightOpt(-1); return; }
+      if (e.key === 'Enter') {
+        const hi = _fDropdown.querySelector('.highlighted');
+        if (hi) {
+          e.preventDefault();
+          _fInput.value = `/${hi.dataset.field} `;
+          _fDropdown.style.display = 'none';
+          return;
+        }
+      }
+    }
+    if (e.key === 'Escape') { _fDropdown.style.display = 'none'; _fInput.blur(); }
+    if (e.key === 'Enter')  { _applyFilter(this.value.trim()); }
+  });
+
+  _fInput.addEventListener('blur', () => setTimeout(() => { _fDropdown.style.display = 'none'; }, 150));
+
+  function _applyFilter(raw) {
+    const m = raw.match(/^\/(\w+)\s+(.+)$/);
+    if (!m || !FILTER_FIELDS[m[1]]) return;
+    activeFilter = { field: m[1], value: m[2].trim() };
+    _fInput.value = '';
+    _renderChip();
+    load();
+  }
+
+  function _renderChip() {
+    if (!activeFilter) { _fChip.innerHTML = ''; return; }
+    _fChip.innerHTML =
+      `<span class="filter-chip">` +
+      `<code>/${activeFilter.field}</code> ${escHtml(activeFilter.value)}` +
+      `<span class="filter-chip-x" id="filter-clear">×</span></span>`;
+    document.getElementById('filter-clear').addEventListener('click', () => {
+      activeFilter = null;
+      _renderChip();
+      load();
+    });
   }
 
   init();

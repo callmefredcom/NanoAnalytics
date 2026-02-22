@@ -105,6 +105,16 @@ async def on_message(message: discord.Message):
             await handle_trend(message)
         elif cmd == "languages":
             await handle_languages(message)
+        elif cmd == "countries":
+            await handle_countries(message)
+        elif cmd == "active":
+            await handle_active(message)
+        elif cmd == "entrypages":
+            await handle_entry_pages(message)
+        elif cmd == "peakhours":
+            await handle_peak_hours(message)
+        elif cmd == "bouncerates":
+            await handle_bounce_rates(message)
         elif cmd == "help":
             await handle_help(message)
     except Exception as e:
@@ -121,7 +131,12 @@ async def handle_help(message: discord.Message):
         "`!referrers` — Top traffic sources\n"
         "`!devices` — Device breakdown\n"
         "`!trend` — Daily traffic (last 7 days)\n"
-        "`!languages` — Top browser languages"
+        "`!languages` — Top browser languages\n"
+        "`!countries` — Top countries\n"
+        "`!active` — Active visitors right now\n"
+        "`!entrypages` — Top entry pages\n"
+        "`!peakhours` — Busiest hours of the day\n"
+        "`!bouncerates` — Bounce rate by page"
     ), inline=False)
     await message.channel.send(embed=e)
 
@@ -187,6 +202,58 @@ async def handle_languages(message: discord.Message):
         return
     lines = "\n".join(f"`{r['lang']}` — **{_fmt(r['views'])}**" for r in rows)
     e = embed("🌐 Top Languages", lines)
+    await message.channel.send(embed=e)
+
+
+async def handle_countries(message: discord.Message):
+    start, end = _range_7d()
+    rows = await fetch("/api/countries", start=start, end=end, limit=10)
+    if not rows:
+        await message.channel.send("No country data yet.")
+        return
+    lines = "\n".join(f"`{r['country']}` — **{_fmt(r['views'])}**" for r in rows)
+    e = embed("🌍 Top Countries", lines)
+    await message.channel.send(embed=e)
+
+
+async def handle_active(message: discord.Message):
+    data = await fetch("/api/active")
+    breakdown = "\n".join(f"`{r['country']}` — **{r['sessions']}** session(s)" for r in (data.get("countries") or []))
+    desc = (breakdown or "No country breakdown available.") + f"\n\n🟢 **{data['active']} active** (last {data['window_seconds']//60} min)"
+    e = embed("🟢 Active Visitors", desc)
+    await message.channel.send(embed=e)
+
+
+async def handle_entry_pages(message: discord.Message):
+    start, end = _range_7d()
+    rows = await fetch("/api/entry-pages", start=start, end=end, limit=10)
+    if not rows:
+        await message.channel.send("No entry page data yet.")
+        return
+    lines = "\n".join(f"`{r['path']}` — **{_fmt(r['entries'])}** entries" for r in rows)
+    e = embed("🚪 Entry Pages", lines)
+    await message.channel.send(embed=e)
+
+
+async def handle_peak_hours(message: discord.Message):
+    start, end = _range_7d()
+    rows = await fetch("/api/peak-hours", start=start, end=end)
+    if not rows:
+        await message.channel.send("No hour data yet.")
+        return
+    lines = "\n".join(f"`{r['hour']:02d}:00` — **{_fmt(r['views'])}** views" for r in rows)
+    e = embed("⏰ Peak Hours", lines)
+    await message.channel.send(embed=e)
+
+
+async def handle_bounce_rates(message: discord.Message):
+    start, end = _range_7d()
+    rows = await fetch("/api/bounce-rates", start=start, end=end, limit=10)
+    if not rows:
+        await message.channel.send("Not enough data yet.")
+        return
+    lines = "\n".join(f"`{r['path']}` — **{r['bounce_rate']}%**" for r in rows)
+    e = embed("↩️ Bounce Rates", lines)
     await message.channel.send(embed=e)
 
 

@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, current_app, render_template, sen
 
 from .db import get_db
 from .auth import require_token
-from .ua_parser import device_type
+from .ua_parser import device_type, browser_name, os_name
 from .openapi import SPEC
 
 # Optional offline GeoIP — bundled database, zero external calls
@@ -197,16 +197,55 @@ def referrers():
 @bp.route("/api/timeseries")
 @require_token
 def timeseries():
-    """Daily pageviews and sessions grouped by UTC date."""
+    """Daily (or hourly) pageviews and sessions. Pass ?granularity=hour for hourly breakdown."""
     site, start, end, _ = _query_params()
+    granularity = request.args.get("granularity", "day")
     where, params = _where(site, start, end)
+    if granularity == "hour":
+        bucket_expr = "strftime('%Y-%m-%d %H:00', ts, 'unixepoch')"
+        label       = "hour"
+    else:
+        bucket_expr = "date(ts, 'unixepoch')"
+        label       = "day"
     rows = get_db().execute(
-        f"SELECT date(ts, 'unixepoch') AS day, COUNT(*) AS views, "
+        f"SELECT {bucket_expr} AS {label}, COUNT(*) AS views, "
         f"COUNT(DISTINCT session) AS sessions "
-        f"FROM hits WHERE {where} GROUP BY day ORDER BY day",
+        f"FROM hits WHERE {where} GROUP BY {label} ORDER BY {label}",
         params,
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/browsers")
+@require_token
+def browsers():
+    """Pageview breakdown by browser (Chrome / Firefox / Safari / Edge / other)."""
+    site, start, end, _ = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT ua FROM hits WHERE {where}", params
+    ).fetchall()
+    counts: dict[str, int] = {}
+    for r in rows:
+        b = browser_name(r["ua"])
+        counts[b] = counts.get(b, 0) + 1
+    return jsonify(counts)
+
+
+@bp.route("/api/os")
+@require_token
+def operating_systems():
+    """Pageview breakdown by OS (Windows / macOS / Linux / iOS / Android / other)."""
+    site, start, end, _ = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT ua FROM hits WHERE {where}", params
+    ).fetchall()
+    counts: dict[str, int] = {}
+    for r in rows:
+        o = os_name(r["ua"])
+        counts[o] = counts.get(o, 0) + 1
+    return jsonify(counts)
 
 
 @bp.route("/api/devices")
@@ -368,3 +407,63 @@ def bounce_rates():
         params + [limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/exit-pages")
+@require_token
+def exit_pages():
+    """Top exit pages — last path seen in each session."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"""WITH filtered AS (
+              SELECT session, path, ts FROM hits WHERE {where}
+            ),
+            session_last AS (
+              SELECT session, MAX(ts) AS last_ts FROM filtered GROUP BY session
+            ),
+            exits AS (
+              SELECT f.path FROM filtered f
+              JOIN session_last sl ON f.session = sl.session AND f.ts = sl.last_ts
+            )
+            SELECT path, COUNT(*) AS exits
+            FROM exits
+            GROUP BY path ORDER BY exits DESC LIMIT ?""",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/screen-widths")
+@require_token
+def screen_widths():
+    """Pageview breakdown by screen width bucket."""
+    site, start, end, limit = _query_params()
+    where, params = _where(site, start, end)
+    rows = get_db().execute(
+        f"SELECT w, COUNT(*) AS views FROM hits WHERE {where} AND w IS NOT NULL "
+        f"GROUP BY w ORDER BY views DESC LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/session-duration")
+@require_token
+def session_duration():
+    """Average session duration in seconds (sessions with > 1 hit only)."""
+    site, start, end, _ = _query_params()
+    where, params = _where(site, start, end)
+    row = get_db().execute(
+        f"""WITH session_times AS (
+              SELECT session, MAX(ts) - MIN(ts) AS duration_s
+              FROM hits WHERE {where}
+              GROUP BY session
+              HAVING COUNT(*) > 1
+            )
+            SELECT AVG(duration_s) AS avg_seconds, COUNT(*) AS sessions
+            FROM session_times""",
+        params,
+    ).fetchone()
+    avg = round(row["avg_seconds"], 1) if row["avg_seconds"] else 0
+    return jsonify({"avg_seconds": avg, "sessions": row["sessions"]})

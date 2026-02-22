@@ -5,14 +5,28 @@
   const s = sessionStorage.ab
     || (sessionStorage.ab = Math.random().toString(36).slice(2, 10));
 
-  fetch(
-    `${new URL(document.currentScript.src).origin}/hit` +
-    `?site=${location.hostname}` +
-    `&path=${encodeURIComponent(location.pathname)}` +
-    `&ref=${encodeURIComponent(document.referrer)}` +
-    `&lang=${navigator.language}` +
-    `&w=${screen.width}` +
-    `&s=${s}`,
-    { method: 'GET', keepalive: true }
-  );
+  const origin = new URL(document.currentScript.src).origin;
+
+  function send(path) {
+    fetch(
+      `${origin}/hit` +
+      `?site=${location.hostname}` +
+      `&path=${encodeURIComponent(path)}` +
+      `&ref=${encodeURIComponent(document.referrer)}` +
+      `&lang=${navigator.language}` +
+      `&w=${screen.width}` +
+      `&s=${s}`,
+      { method: 'GET', keepalive: true }
+    );
+  }
+
+  send(location.pathname);
+
+  // SPA support: intercept history.pushState for client-side navigation
+  const _push = history.pushState.bind(history);
+  history.pushState = function(state, title, url) {
+    _push(state, title, url);
+    if (url) send(new URL(url, location.href).pathname);
+  };
+  window.addEventListener('popstate', () => send(location.pathname));
 })();

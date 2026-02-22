@@ -341,6 +341,10 @@
       <div class="label">Pages / Session</div>
       <div class="value" id="stat-pps">—</div>
     </div>
+    <div class="card">
+      <div class="label">Avg. Session Duration</div>
+      <div class="value" id="stat-duration">—</div>
+    </div>
   </div>
 
   <div class="live-box">
@@ -402,6 +406,22 @@
     <div class="table-box">
       <h2>Bounce Rate</h2>
       <table class="data-table" id="tbl-bounce"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Exit Pages</h2>
+      <table class="data-table" id="tbl-exit"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Screen Widths</h2>
+      <table class="data-table" id="tbl-screens"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Browsers</h2>
+      <table class="data-table" id="tbl-browsers"><tr><td class="skeleton">Loading…</td></tr></table>
+    </div>
+    <div class="table-box">
+      <h2>Operating Systems</h2>
+      <table class="data-table" id="tbl-os"><tr><td class="skeleton">Loading…</td></tr></table>
     </div>
   </div>
 </div>
@@ -643,7 +663,7 @@
   // ── Load all data ──────────────────────────────────────────
   async function load() {
     try {
-      const [pv, pgs, refs, ts, devs, langs, hosts, ctries, entryPgs, peakHrs, bounceRates] = await Promise.all([
+      const [pv, pgs, refs, ts, devs, langs, hosts, ctries, entryPgs, peakHrs, bounceRates, exitPgs, screens, browsers, osData, duration] = await Promise.all([
         api('/api/pageviews'),
         api('/api/pages'),
         api('/api/referrers'),
@@ -655,12 +675,18 @@
         api('/api/entry-pages'),
         api('/api/peak-hours'),
         api('/api/bounce-rates'),
+        api('/api/exit-pages'),
+        api('/api/screen-widths'),
+        api('/api/browsers'),
+        api('/api/os'),
+        api('/api/session-duration'),
       ]);
 
       // Stat cards
       document.getElementById('stat-views').textContent    = fmt(pv.views);
       document.getElementById('stat-sessions').textContent = fmt(pv.sessions);
       document.getElementById('stat-pps').textContent      = pv.sessions > 0 ? (pv.views / pv.sessions).toFixed(1) : '—';
+      document.getElementById('stat-duration').textContent = fmtDuration(duration.avg_seconds);
 
       // Timeseries line chart
       tsRawData = ts;
@@ -708,6 +734,20 @@
       // Bounce Rate
       renderTable('tbl-bounce', bounceRates, r => [r.path, r.bounce_rate + '%'], 'Not enough data yet.');
 
+      // Exit Pages
+      renderTable('tbl-exit', exitPgs, r => [r.path, fmt(r.exits)], 'No exit page data yet.');
+
+      // Screen Widths
+      renderTable('tbl-screens', screens, r => [r.w + 'px', fmt(r.views)], 'No screen width data yet.');
+
+      // Browsers
+      const browserRows = Object.entries(browsers).sort((a,b) => b[1]-a[1]).map(([k,v]) => ({name:k,views:v}));
+      renderTable('tbl-browsers', browserRows, r => [capitalize(r.name), fmt(r.views)], 'No browser data yet.');
+
+      // Operating Systems
+      const osRows = Object.entries(osData).sort((a,b) => b[1]-a[1]).map(([k,v]) => ({name:k,views:v}));
+      renderTable('tbl-os', osRows, r => [capitalize(r.name), fmt(r.views)], 'No OS data yet.');
+
     } catch (e) {
       console.error('NanoAnalytics load error:', e);
     }
@@ -731,6 +771,20 @@
   function fmt(n) {
     if (n == null) return '—';
     return Number(n).toLocaleString();
+  }
+
+  function fmtDuration(seconds) {
+    if (!seconds) return '—';
+    const s = Math.round(seconds);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+  }
+
+  function capitalize(s) {
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
   function fmtHour(h) {

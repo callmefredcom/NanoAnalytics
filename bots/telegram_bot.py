@@ -65,7 +65,12 @@ async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         "/referrers — Top traffic sources\n"
         "/devices — Device breakdown\n"
         "/trend — Daily traffic (last 7 days)\n"
-        "/languages — Top browser languages",
+        "/languages — Top browser languages\n"
+        "/countries — Top countries\n"
+        "/active — Active visitors right now\n"
+        "/entrypages — Top entry pages\n"
+        "/peakhours — Busiest hours of the day\n"
+        "/bouncerates — Bounce rate by page",
         parse_mode="Markdown",
     )
 
@@ -148,18 +153,85 @@ async def cmd_languages(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def cmd_countries(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    start, end = _range_7d()
+    rows = await fetch("/api/countries", start=start, end=end, limit=10)
+    if not rows:
+        await update.message.reply_text("No country data yet.")
+        return
+    lines = [f"`{r['country']}` — {_fmt(r['views'])}" for r in rows]
+    await update.message.reply_text(
+        f"🌍 *Top Countries — {DEFAULT_SITE}*\n\n" + "\n".join(lines),
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_active(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    data = await fetch("/api/active")
+    lines = [f"`{r['country']}` — {r['sessions']} session(s)" for r in (data.get("countries") or [])]
+    body = ("\n".join(lines) or "No country breakdown available.") + f"\n\n🟢 *{data['active']} active* (last {data['window_seconds']//60} min)"
+    await update.message.reply_text(
+        f"🟢 *Active Visitors — {DEFAULT_SITE}*\n\n" + body,
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_entry_pages(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    start, end = _range_7d()
+    rows = await fetch("/api/entry-pages", start=start, end=end, limit=10)
+    if not rows:
+        await update.message.reply_text("No entry page data yet.")
+        return
+    lines = [f"`{r['path']}` — {_fmt(r['entries'])} entries" for r in rows]
+    await update.message.reply_text(
+        f"🚪 *Entry Pages — {DEFAULT_SITE}*\n\n" + "\n".join(lines),
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_peak_hours(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    start, end = _range_7d()
+    rows = await fetch("/api/peak-hours", start=start, end=end)
+    if not rows:
+        await update.message.reply_text("No hour data yet.")
+        return
+    lines = [f"`{r['hour']:02d}:00` — {_fmt(r['views'])} views" for r in rows]
+    await update.message.reply_text(
+        f"⏰ *Peak Hours — {DEFAULT_SITE}*\n\n" + "\n".join(lines),
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_bounce_rates(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    start, end = _range_7d()
+    rows = await fetch("/api/bounce-rates", start=start, end=end, limit=10)
+    if not rows:
+        await update.message.reply_text("Not enough data yet.")
+        return
+    lines = [f"`{r['path']}` — {r['bounce_rate']}%" for r in rows]
+    await update.message.reply_text(
+        f"↩️ *Bounce Rates — {DEFAULT_SITE}*\n\n" + "\n".join(lines),
+        parse_mode="Markdown",
+    )
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start",     cmd_start))
-    app.add_handler(CommandHandler("stats",     cmd_stats))
-    app.add_handler(CommandHandler("pages",     cmd_pages))
-    app.add_handler(CommandHandler("referrers", cmd_referrers))
-    app.add_handler(CommandHandler("devices",   cmd_devices))
-    app.add_handler(CommandHandler("trend",     cmd_trend))
-    app.add_handler(CommandHandler("languages", cmd_languages))
+    app.add_handler(CommandHandler("start",       cmd_start))
+    app.add_handler(CommandHandler("stats",       cmd_stats))
+    app.add_handler(CommandHandler("pages",       cmd_pages))
+    app.add_handler(CommandHandler("referrers",   cmd_referrers))
+    app.add_handler(CommandHandler("devices",     cmd_devices))
+    app.add_handler(CommandHandler("trend",       cmd_trend))
+    app.add_handler(CommandHandler("languages",   cmd_languages))
+    app.add_handler(CommandHandler("countries",   cmd_countries))
+    app.add_handler(CommandHandler("active",      cmd_active))
+    app.add_handler(CommandHandler("entrypages",  cmd_entry_pages))
+    app.add_handler(CommandHandler("peakhours",   cmd_peak_hours))
+    app.add_handler(CommandHandler("bouncerates", cmd_bounce_rates))
 
     print(f"🤖 NanoAnalytics Telegram bot started (site: {DEFAULT_SITE})")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

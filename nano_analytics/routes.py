@@ -462,7 +462,8 @@ def session_duration():
               HAVING COUNT(*) > 1
             )
             SELECT AVG(duration_s) AS avg_seconds, COUNT(*) AS sessions
-            FROM session_times""",
+            FROM session_times
+            WHERE duration_s <= 1800""",
         params,
     ).fetchone()
     avg = round(row["avg_seconds"], 1) if row["avg_seconds"] else 0

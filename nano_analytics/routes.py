@@ -1,5 +1,8 @@
+import re
 import time
+import threading
 import ipaddress
+from collections import defaultdict, deque
 from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory
 
 from .db import get_db
@@ -23,6 +26,51 @@ _GIF_1x1 = (
     b"\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02"
     b"\x44\x01\x00\x3b"
 )
+
+
+# ── Bot detection ──────────────────────────────────────────────────────────────
+
+# Chrome dropped Windows 7 (NT 6.1) support after version 109.
+_WIN7_RE       = re.compile(r"Windows NT 6\.1")
+_CHROME_VER_RE = re.compile(r"Chrome/(\d+)\.")
+_BOT_UA_RE     = re.compile(
+    r"(bot|crawl|spider|slurp|HeadlessChrome|python-requests|curl|wget|axios|"
+    r"node-fetch|Go-http-client|Java/|libwww|okhttp|Scrapy)",
+    re.IGNORECASE,
+)
+
+# Per-site sliding-window rate limiter (in-process; per gunicorn worker).
+# If a site exceeds this many hits/minute within a single worker, incoming
+# hits are flagged as bot.  Real newsletter bursts rarely exceed ~100/min/worker.
+_MAX_HITS_PER_MINUTE = 300
+_hit_windows: dict[str, deque] = defaultdict(deque)
+_hit_lock = threading.Lock()
+
+
+def _is_bot(ua: str) -> bool:
+    """Return True if the User-Agent looks like a bot."""
+    if not ua:
+        return True
+    if _BOT_UA_RE.search(ua):
+        return True
+    # Chrome > 109 cannot run on Windows 7 (NT 6.1) — impossible combination.
+    if _WIN7_RE.search(ua):
+        m = _CHROME_VER_RE.search(ua)
+        if m and int(m.group(1)) > 109:
+            return True
+    return False
+
+
+def _is_flood(site: str) -> bool:
+    """Sliding-window check: True if this site is being hit at bot-level rates."""
+    now    = time.time()
+    cutoff = now - 60.0
+    with _hit_lock:
+        dq = _hit_windows[site]
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        dq.append(now)
+        return len(dq) > _MAX_HITS_PER_MINUTE
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -82,7 +130,7 @@ def _where(site, start, end):
     filter_language). Multiple filters are ANDed together.
     """
     root = _root_domain(site)
-    clauses = ["(site = ? OR site LIKE ?)"]
+    clauses = ["(site = ? OR site LIKE ?)", "(bot IS NULL OR bot = 0)"]
     params  = [root, f"%.{root}"]
     if start:
         clauses.append("ts >= ?")
@@ -122,12 +170,14 @@ def hit():
     w       = int(w_str) if w_str.isdigit() else None
     ts      = int(time.time())
     country = _get_country(_client_ip())
+    bot     = 1 if (_is_bot(ua) or _is_flood(site)) else 0
 
     if site:
         db = get_db()
         db.execute(
-            "INSERT INTO hits (ts, site, path, ref, ua, lang, w, session, country) VALUES (?,?,?,?,?,?,?,?,?)",
-            (ts, site, path, ref, ua, lang, w, session, country),
+            "INSERT INTO hits (ts, site, path, ref, ua, lang, w, session, country, bot) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ts, site, path, ref, ua, lang, w, session, country, bot),
         )
         db.commit()
 
@@ -324,7 +374,7 @@ def active():
 
     total = get_db().execute(
         "SELECT COUNT(DISTINCT session) AS n FROM hits "
-        "WHERE (site = ? OR site LIKE ?) AND ts >= ?",
+        "WHERE (site = ? OR site LIKE ?) AND ts >= ? AND (bot IS NULL OR bot = 0)",
         [root, f"%.{root}", since],
     ).fetchone()["n"]
 
@@ -332,6 +382,7 @@ def active():
         "SELECT country, COUNT(DISTINCT session) AS sessions FROM hits "
         "WHERE (site = ? OR site LIKE ?) AND ts >= ? "
         "AND country IS NOT NULL AND country != '' "
+        "AND (bot IS NULL OR bot = 0) "
         "GROUP BY country ORDER BY sessions DESC",
         [root, f"%.{root}", since],
     ).fetchall()

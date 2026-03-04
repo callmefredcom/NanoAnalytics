@@ -44,9 +44,13 @@ def init_db(app):
     with app.app_context():
         db = get_db()
         db.executescript(SCHEMA)
-        # Non-destructive migration: add country column to existing databases
-        try:
-            db.execute("ALTER TABLE hits ADD COLUMN country TEXT")
-            db.commit()
-        except Exception:
-            pass  # column already exists
+        # Non-destructive migrations
+        for stmt in (
+            "ALTER TABLE hits ADD COLUMN country TEXT",
+            "ALTER TABLE hits ADD COLUMN bot INTEGER DEFAULT 0",
+        ):
+            try:
+                db.execute(stmt)
+                db.commit()
+            except Exception:
+                pass  # column already exists

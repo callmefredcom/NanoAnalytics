@@ -3,6 +3,7 @@ import time
 import threading
 import ipaddress
 from collections import defaultdict, deque
+from functools import wraps
 from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory
 
 from .db import get_db
@@ -71,6 +72,47 @@ def _is_flood(site: str) -> bool:
             dq.popleft()
         dq.append(now)
         return len(dq) > _MAX_HITS_PER_MINUTE
+
+
+# ── Response cache ─────────────────────────────────────────────────────────────
+# Keyed by (endpoint_name, query_string).  TTL is long for purely historical
+# ranges (end < today) and short for ranges that include today.
+
+_RESP_CACHE: dict[str, tuple[float, object]] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_ttl(end: int | None) -> int:
+    today_start = int(time.time() // 86400 * 86400)  # UTC midnight today
+    if end and end < today_start:
+        return 3600   # 1 hour — past data is immutable
+    return 120        # 2 min — ranges that include today
+
+
+def cache_response(fn):
+    """Cache jsonify'd responses; safe to stack inside @require_token."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        key = f"{fn.__name__}:{request.query_string.decode()}"
+        with _CACHE_LOCK:
+            entry = _RESP_CACHE.get(key)
+            if entry and time.time() < entry[0]:
+                return jsonify(entry[1])
+            # Evict expired entries when cache grows large
+            if len(_RESP_CACHE) > 1000:
+                now = time.time()
+                expired = [k for k, v in _RESP_CACHE.items() if now >= v[0]]
+                for k in expired:
+                    del _RESP_CACHE[k]
+        resp = fn(*args, **kwargs)
+        data = resp.get_json(silent=True)
+        if data is not None:
+            end = request.args.get("end", type=int)
+            ttl = _cache_ttl(end)
+            with _CACHE_LOCK:
+                _RESP_CACHE[key] = (time.time() + ttl, data)
+        return resp
+    return wrapper
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -224,6 +266,7 @@ def mcp():
 
 @bp.route("/api/pageviews")
 @require_token
+@cache_response
 def pageviews():
     """Total pageviews and unique sessions."""
     site, start, end, _ = _query_params()
@@ -237,6 +280,7 @@ def pageviews():
 
 @bp.route("/api/pages")
 @require_token
+@cache_response
 def pages():
     """Top pages by view count."""
     site, start, end, limit = _query_params()
@@ -251,6 +295,7 @@ def pages():
 
 @bp.route("/api/referrers")
 @require_token
+@cache_response
 def referrers():
     """Top external referrer domains (own-domain self-referrals excluded)."""
     site, start, end, limit = _query_params()
@@ -267,6 +312,7 @@ def referrers():
 
 @bp.route("/api/timeseries")
 @require_token
+@cache_response
 def timeseries():
     """Daily (or hourly) pageviews and sessions. Pass ?granularity=hour for hourly breakdown."""
     site, start, end, _ = _query_params()
@@ -289,6 +335,7 @@ def timeseries():
 
 @bp.route("/api/browsers")
 @require_token
+@cache_response
 def browsers():
     """Pageview breakdown by browser (Chrome / Firefox / Safari / Edge / other)."""
     site, start, end, _ = _query_params()
@@ -305,6 +352,7 @@ def browsers():
 
 @bp.route("/api/os")
 @require_token
+@cache_response
 def operating_systems():
     """Pageview breakdown by OS (Windows / macOS / Linux / iOS / Android / other)."""
     site, start, end, _ = _query_params()
@@ -321,6 +369,7 @@ def operating_systems():
 
 @bp.route("/api/devices")
 @require_token
+@cache_response
 def devices():
     """Pageview breakdown by device type (mobile / tablet / desktop / unknown)."""
     site, start, end, _ = _query_params()
@@ -336,6 +385,7 @@ def devices():
 
 @bp.route("/api/languages")
 @require_token
+@cache_response
 def languages():
     """Top browser languages."""
     site, start, end, limit = _query_params()
@@ -350,6 +400,7 @@ def languages():
 
 @bp.route("/api/countries")
 @require_token
+@cache_response
 def countries():
     """Top countries by pageview count (ISO 3166-1 alpha-2 codes)."""
     site, start, end, limit = _query_params()
@@ -396,6 +447,7 @@ def active():
 
 @bp.route("/api/hostnames")
 @require_token
+@cache_response
 def hostnames():
     """Pageview breakdown by exact hostname (subdomain breakdown)."""
     site, start, end, limit = _query_params()
@@ -410,6 +462,7 @@ def hostnames():
 
 @bp.route("/api/entry-pages")
 @require_token
+@cache_response
 def entry_pages():
     """Top entry pages — first path seen in each session."""
     site, start, end, limit = _query_params()
@@ -435,6 +488,7 @@ def entry_pages():
 
 @bp.route("/api/peak-hours")
 @require_token
+@cache_response
 def peak_hours():
     """Pageview count grouped by hour of day (0–23, UTC), top 10 busiest."""
     site, start, end, _ = _query_params()
@@ -450,6 +504,7 @@ def peak_hours():
 
 @bp.route("/api/bounce-rates")
 @require_token
+@cache_response
 def bounce_rates():
     """Bounce rate per page — % of sessions that only ever viewed that one page."""
     site, start, end, limit = _query_params()
@@ -483,6 +538,7 @@ def bounce_rates():
 
 @bp.route("/api/exit-pages")
 @require_token
+@cache_response
 def exit_pages():
     """Top exit pages — last path seen in each session."""
     site, start, end, limit = _query_params()
@@ -508,6 +564,7 @@ def exit_pages():
 
 @bp.route("/api/screen-widths")
 @require_token
+@cache_response
 def screen_widths():
     """Pageview breakdown by screen width bucket."""
     site, start, end, limit = _query_params()
@@ -522,6 +579,7 @@ def screen_widths():
 
 @bp.route("/api/session-duration")
 @require_token
+@cache_response
 def session_duration():
     """Average session duration in seconds (sessions with > 1 hit only)."""
     site, start, end, _ = _query_params()
@@ -544,6 +602,7 @@ def session_duration():
 
 @bp.route("/api/filter-values")
 @require_token
+@cache_response
 def filter_values():
     """Return top distinct values for a filter field, for autocomplete.
 

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS hits (
     country TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_site_ts ON hits(site, ts);
+CREATE INDEX IF NOT EXISTS idx_site_ts      ON hits(site, ts);
+CREATE INDEX IF NOT EXISTS idx_site_session ON hits(site, session);
 """
 
 

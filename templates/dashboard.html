@@ -107,6 +107,15 @@
       font-weight: 700;
       color: var(--accent);
     }
+    .controls #site-select {
+      padding: .4rem .6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .85rem;
+      background: var(--surface);
+      cursor: pointer;
+      min-width: 180px;
+    }
     .btn-logout {
       padding: .38rem .75rem;
       border: 1px solid var(--border);
@@ -376,6 +385,9 @@
       <span class="site-label">— </span><span id="cur-site"></span>
     </h1>
     <div class="controls">
+      <select id="site-select" title="Select a site to view analytics">
+        <option value="">Loading sites…</option>
+      </select>
       <select id="range-sel">
         <option value="7">Last 7 days</option>
         <option value="30" selected>Last 30 days</option>
@@ -652,6 +664,22 @@
   let _liveInterval = null;
 
   // ── Bootstrap ──────────────────────────────────────────────
+  async function loadSites(selectedSite) {
+    const token = localStorage.getItem(LS_TOKEN);
+    if (!token) return;
+    try {
+      const r = await fetch('/api/sites', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!r.ok) return;
+      const sites = await r.json();
+      const sel = document.getElementById('site-select');
+      sel.innerHTML = sites.map(s =>
+        `<option value="${escHtml(s.site)}" ${s.site === selectedSite ? 'selected' : ''}>${escHtml(s.site)} (${fmt(s.views)} views)</option>`
+      ).join('');
+    } catch(e) { console.error('Failed to load sites:', e); }
+  }
+
   function init() {
     const token = localStorage.getItem(LS_TOKEN);
     const site  = localStorage.getItem(LS_SITE);
@@ -667,6 +695,7 @@
     // Init map once (needs the div to be visible)
     if (!liveMap) initLiveMap();
 
+    loadSites(site);
     load();
     loadLive();
     if (_liveInterval) clearInterval(_liveInterval);
@@ -703,6 +732,16 @@
     document.getElementById(id).addEventListener('keydown', e => {
       if (e.key === 'Enter') document.getElementById('login-btn').click();
     });
+  });
+
+  // ── Site selector change ──────────────────────────────────
+  document.getElementById('site-select').addEventListener('change', function() {
+    const newSite = this.value;
+    if (!newSite) return;
+    localStorage.setItem(LS_SITE, newSite);
+    document.getElementById('cur-site').textContent = newSite;
+    load();
+    loadLive();
   });
 
   // ── Logout ─────────────────────────────────────────────────
@@ -756,6 +795,8 @@
     if (r.status === 401) { localStorage.removeItem(LS_TOKEN); location.reload(); }
     return r.json();
   }
+
+  
 
   // ── Load all data ──────────────────────────────────────────
   async function load() {

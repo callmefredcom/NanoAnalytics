@@ -445,6 +445,20 @@ def active():
     })
 
 
+@bp.route("/api/sites")
+@require_token
+@cache_response
+def sites():
+    """List all sites with data (for multi-site dashboard selector)."""
+    db = get_db()
+    rows = db.execute(
+        """SELECT site, COUNT(*) AS views, COUNT(DISTINCT session) AS sessions,
+        MAX(ts) AS last_seen FROM hits WHERE (bot IS NULL OR bot = 0)
+        GROUP BY site ORDER BY last_seen DESC"""
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
 @bp.route("/api/hostnames")
 @require_token
 @cache_response

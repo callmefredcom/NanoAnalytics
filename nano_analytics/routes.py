@@ -82,6 +82,36 @@ _RESP_CACHE: dict[str, tuple[float, object]] = {}
 _CACHE_LOCK = threading.Lock()
 
 
+def _invalidate_events_cache(site: str = "") -> None:
+    """Invalidate cached responses for events API endpoints for a given site.
+    
+    Called after writing new events to ensure subsequent reads reflect fresh data.
+    If site is provided, only invalidate keys matching that site (via query string).
+    """
+    with _CACHE_LOCK:
+        events_endpoints = {
+            'event_names', 'event_stats', 'event_timeseries', 
+            'event_funnels', 'event_props'
+        }
+        keys_to_delete = []
+        for key in _RESP_CACHE:
+            # key format: "function_name:query_string"
+            if ':' in key:
+                fn_name = key.split(':')[0]
+                if fn_name in events_endpoints:
+                    # If site provided, only delete if query string matches site
+                    if site:
+                        query = key.split(':', 1)[1]
+                        if f"site={site}" in query or f"site={site.replace('.', '%2E')}" in query:
+                            keys_to_delete.append(key)
+                    else:
+                        keys_to_delete.append(key)
+        for k in keys_to_delete:
+            del _RESP_CACHE[k]
+        if keys_to_delete:
+            current_app.logger.info(f"Invalidated {len(keys_to_delete)} events cache entries" + (f" for site={site}" if site else ""))
+
+
 def _cache_ttl(end: int | None) -> int:
     today_start = int(time.time() // 86400 * 86400)  # UTC midnight today
     if end and end < today_start:
@@ -150,6 +180,23 @@ def _root_domain(site):
     """Strip www. prefix so queries match all subdomains of the root."""
     if site.startswith("www."):
         return site[4:]
+    return site
+
+
+def _check_site_authorization(site):
+    """Check if the requested site is authorized for the current token.
+    
+    Returns the effective site to query (may be restricted by token_site).
+    Returns None if unauthorized.
+    """
+    token_site = getattr(request, 'token_site', None)
+    if token_site is not None:
+        # Per-site token: only allow the token's site
+        root_requested = _root_domain(site)
+        root_token = _root_domain(token_site)
+        if root_requested != root_token:
+            return None
+        return token_site
     return site
 
 
@@ -228,6 +275,44 @@ def hit():
     resp.headers["Cache-Control"]              = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
+
+
+@bp.route("/event", methods=["POST"])
+def event():
+    """Custom events endpoint. Accepts JSON with name, props, and optional context.
+    Used for tracking button clicks, form submissions, conversions, etc.
+    
+    Expected JSON:
+    {
+        "site": "example.com",
+        "name": "button_click",
+        "props": {"button_id": "cta-main", "page": "/pricing"},
+        "session": "abc123",  // optional, from beacon
+        "path": "/pricing"     // optional
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    site    = data.get("site", "")
+    name    = data.get("name", "")
+    props   = data.get("props", {})
+    session = data.get("session", "")
+    path    = data.get("path", "")
+    ua      = request.headers.get("User-Agent", "")
+    ts      = int(time.time())
+    country = _get_country(_client_ip())
+    bot     = 1 if (_is_bot(ua) or _is_flood(site)) else 0
+
+    if site and name:
+        db = get_db()
+        db.execute(
+            """INSERT INTO events (ts, site, session, path, name, props, ua, country, bot)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (ts, site, session, path, name, jsonify(props).get_data(as_text=True), ua, country, bot),
+        )
+        db.commit()
+        _invalidate_events_cache(site)
+
+    return jsonify({"status": "ok"})
 
 
 @bp.route("/a.js")
@@ -630,5 +715,187 @@ def filter_values():
         f"WHERE {where} AND {col} IS NOT NULL AND {col} != '' "
         f"{extra_clause} GROUP BY {col} ORDER BY n DESC",
         params + extra_params,
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+# ── Custom Events API ───────────────────────────────────────────────────────
+
+@bp.route("/api/events/names")
+@require_token
+@cache_response
+def event_names():
+    """List all custom event names with counts for a site."""
+    site, start, end, limit = _query_params()
+    root = _root_domain(site)
+    where = "(site = ? OR site LIKE ?) AND (bot IS NULL OR bot = 0)"
+    params = [root, f"%.{root}"]
+    if start:
+        where += " AND ts >= ?"
+        params.append(start)
+    if end:
+        where += " AND ts <= ?"
+        params.append(end)
+    rows = get_db().execute(
+        f"SELECT name, COUNT(*) AS count FROM events WHERE {where} "
+        f"GROUP BY name ORDER BY count DESC LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/events/stats")
+@require_token
+@cache_response
+def event_stats():
+    """Get event counts grouped by name, optionally filtered by name."""
+    site, start, end, limit = _query_params()
+    name_filter = request.args.get("name", "").strip()
+    site = _check_site_authorization(site)
+    if site is None:
+        return jsonify({"error": "unauthorized"}), 403
+    root = _root_domain(site)
+    where = "(site = ? OR site LIKE ?) AND (bot IS NULL OR bot = 0)"
+    params = [root, f"%.{root}"]
+    if start:
+        where += " AND ts >= ?"
+        params.append(start)
+    if end:
+        where += " AND ts <= ?"
+        params.append(end)
+    if name_filter:
+        where += " AND name = ?"
+        params.append(name_filter)
+    rows = get_db().execute(
+        f"SELECT name, COUNT(*) AS count FROM events WHERE {where} "
+        f"GROUP BY name ORDER BY count DESC LIMIT ?",
+        params + [limit],
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/events/timeseries")
+@require_token
+@cache_response
+def event_timeseries():
+    """Custom events over time (daily or hourly)."""
+    site, start, end, _ = _query_params()
+    name_filter = request.args.get("name", "").strip()
+    granularity = request.args.get("granularity", "day")
+    site = _check_site_authorization(site)
+    if site is None:
+        return jsonify({"error": "unauthorized"}), 403
+    root = _root_domain(site)
+    where = "(site = ? OR site LIKE ?) AND (bot IS NULL OR bot = 0)"
+    params = [root, f"%.{root}"]
+    if start:
+        where += " AND ts >= ?"
+        params.append(start)
+    if end:
+        where += " AND ts <= ?"
+        params.append(end)
+    if name_filter:
+        where += " AND name = ?"
+        params.append(name_filter)
+    if granularity == "hour":
+        bucket_expr = "strftime('%Y-%m-%d %H:00', ts, 'unixepoch')"
+        label = "hour"
+    else:
+        bucket_expr = "date(ts, 'unixepoch')"
+        label = "day"
+    rows = get_db().execute(
+        f"SELECT {bucket_expr} AS {label}, name, COUNT(*) AS count "
+        f"FROM events WHERE {where} GROUP BY {label}, name ORDER BY {label}",
+        params,
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route("/api/events/funnels")
+@require_token
+@cache_response
+def event_funnels():
+    """Simple funnel analysis: count sessions that completed a sequence of events.
+    
+    Query params:
+    - steps: comma-separated event names (e.g., 'view_pricing,click_signup,complete_purchase')
+    - window: max seconds between first and last step (default 86400 = 24h)
+    """
+    site = request.args.get("site", "")
+    steps_param = request.args.get("steps", "").strip()
+    window = min(int(request.args.get("window", 86400)), 604800)  # max 7 days
+    
+    if not steps_param:
+        return jsonify([])
+    
+    step_names = [s.strip() for s in steps_param.split(",") if s.strip()]
+    if not step_names:
+        return jsonify([])
+    
+    site = _check_site_authorization(site)
+    if site is None:
+        return jsonify({"error": "unauthorized"}), 403
+    root = _root_domain(site)
+    where_base = "(site = ? OR site LIKE ?) AND (bot IS NULL OR bot = 0)"
+    params_base = [root, f"%.{root}"]
+    
+    since = int(time.time()) - window
+    where_base += " AND ts >= ?"
+    params_base.append(since)
+    
+    # For each step, get sessions that have this event
+    step_sessions = []
+    for step_name in step_names:
+        rows = get_db().execute(
+            f"SELECT DISTINCT session FROM events WHERE {where_base} AND name = ? AND session != ''",
+            params_base + [step_name],
+        ).fetchall()
+        step_sessions.append(set(r["session"] for r in rows))
+    
+    # Funnel: sessions that have step 1, then step 1+2, then step 1+2+3, etc.
+    funnel = []
+    if step_sessions:
+        current = step_sessions[0]
+        funnel.append({"step": step_names[0], "sessions": len(current)})
+        for i in range(1, len(step_names)):
+            current = current & step_sessions[i]
+            funnel.append({"step": step_names[i], "sessions": len(current)})
+    
+    return jsonify(funnel)
+
+
+@bp.route("/api/events/props")
+@require_token
+@cache_response
+def event_props():
+    """Get distinct property values for a given event name and property key."""
+    site, start, end, limit = _query_params()
+    name = request.args.get("name", "").strip()
+    prop_key = request.args.get("prop", "").strip()
+    
+    if not name or not prop_key:
+        return jsonify([])
+    
+    site = _check_site_authorization(site)
+    if site is None:
+        return jsonify({"error": "unauthorized"}), 403
+    
+    root = _root_domain(site)
+    where = "(site = ? OR site LIKE ?) AND name = ? AND (bot IS NULL OR bot = 0)"
+    params = [root, f"%.{root}", name]
+    if start:
+        where += " AND ts >= ?"
+        params.append(start)
+    if end:
+        where += " AND ts <= ?"
+        params.append(end)
+    
+    # JSON_EXTRACT for SQLite JSON
+    # Parameter order: prop_key (1st), root, %.root, name, prop_key (2nd), limit
+    rows = get_db().execute(
+        f"SELECT JSON_EXTRACT(props, '$.' || ?) AS value, COUNT(*) AS count "
+        f"FROM events WHERE {where} AND JSON_EXTRACT(props, '$.' || ?) IS NOT NULL "
+        f"GROUP BY value ORDER BY count DESC LIMIT ?",
+        [prop_key] + params + [prop_key, limit],
     ).fetchall()
     return jsonify([dict(r) for r in rows])

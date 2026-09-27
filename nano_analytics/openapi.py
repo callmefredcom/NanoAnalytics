@@ -271,5 +271,114 @@ SPEC = {
                 },
             },
         ),
-    },
+        "/event": {
+            "post": {
+                "summary": "Record a custom event",
+                "description": "Track button clicks, form submissions, conversions, etc. Client-side or server-side.",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["site", "name"],
+                                "properties": {
+                                    "site": {"type": "string", "description": "Root domain, e.g. example.com"},
+                                    "name": {"type": "string", "description": "Event name, e.g. button_click"},
+                                    "props": {"type": "object", "description": "Arbitrary event properties"},
+                                    "session": {"type": "string", "description": "Session ID from beacon (optional)"},
+                                    "path": {"type": "string", "description": "Page path (optional)"},
+                                },
+                            },
+                        },
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "Event recorded",
+                        "content": {"application/json": {"schema": {"type": "object", "properties": {"status": {"type": "string", "example": "ok"}}}}}
+                    },
+                    "401": {"description": "Unauthorized"},
+                },
+            }
+        },
+        "/api/events/names": _stats_path(
+            "List all custom event names with counts for a site",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name":  {"type": "string"},
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+        "/api/events/stats": _stats_path(
+            "Get event counts grouped by name, optionally filtered by name",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name":  {"type": "string"},
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+        "/api/events/timeseries": _stats_path(
+            "Custom events over time (daily or hourly). Pass ?granularity=hour for hourly.",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "day":  {"type": "string"},
+                        "hour": {"type": "string"},
+                        "name": {"type": "string"},
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+        "/api/events/funnels": {
+            "get": {
+                "summary": "Simple funnel analysis: count sessions that completed a sequence of events",
+                "security": [{"BearerAuth": []}],
+                "parameters": [
+                    {"name": "site", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {"name": "steps", "in": "query", "required": True, "schema": {"type": "string"}, "description": "Comma-separated event names (e.g., view_pricing,click_signup,complete_purchase)"},
+                    {"name": "window", "in": "query", "required": False, "schema": {"type": "integer", "default": 86400}, "description": "Max seconds between first and last step"},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {"application/json": {"schema": {"type": "array", "items": {"type": "object", "properties": {"step": {"type": "string"}, "sessions": {"type": "integer"}}}}}
+                    },
+                    "401": {"description": "Unauthorized"},
+                },
+            }
+        },
+        "/api/events/props": _stats_path(
+            "Get distinct property values for a given event name and property key",
+            has_limit=True,
+            response_schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string"},
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+        ),
+    }
+}
 }

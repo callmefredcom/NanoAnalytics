@@ -18,8 +18,24 @@ CREATE TABLE IF NOT EXISTS hits (
     country TEXT
 );
 
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          INTEGER NOT NULL,
+    site        TEXT NOT NULL,
+    session     TEXT,
+    path        TEXT,
+    name        TEXT NOT NULL,
+    props       TEXT,
+    ua          TEXT,
+    country     TEXT,
+    bot         INTEGER DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_site_ts      ON hits(site, ts);
 CREATE INDEX IF NOT EXISTS idx_site_session ON hits(site, session);
+CREATE INDEX IF NOT EXISTS idx_events_site_ts  ON events(site, ts);
+CREATE INDEX IF NOT EXISTS idx_events_session ON events(site, session);
+CREATE INDEX IF NOT EXISTS idx_events_name    ON events(name);
 """
 
 

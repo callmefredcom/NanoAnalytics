@@ -606,10 +606,14 @@
   function initLiveMap() {
     liveMap = L.map('live-map', { zoomControl: true, attributionControl: false })
                .setView([20, 10], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd',
+    // Esri Light Gray Canvas — CARTO now watermarks unkeyed tiles with
+    // "API KEY REQUIRED". No key needed here. Note the {z}/{y}/{x} order
+    // (row before column), and maxZoom 16 is where this basemap ends.
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/' +
+                'Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
     }).addTo(liveMap);
-    L.control.attribution({ prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://osm.org/copyright">OSM</a>' }).addTo(liveMap);
+    L.control.attribution({ prefix: '© <a href="https://www.esri.com">Esri</a>' }).addTo(liveMap);
   }
 
   async function loadLive() {
